@@ -11,3 +11,13 @@
 ## 安装
 ```bash
 pip install -r requirements.txt
+```
+
+## Output
+
+- `outputs/draft_YYYYMMDD_HHMMSS.txt`
+
+## Prompts
+
+- `prompts/system.txt`
+- `prompts/user.txt`

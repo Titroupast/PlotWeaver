@@ -1,6 +1,11 @@
+from datetime import datetime
+from pathlib import Path
+
 from openai import OpenAI
 from config import ARK_API_KEY, ARK_MODEL, ARK_BASE_URL
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
+
+OUTPUT_DIR = Path(__file__).parent / "outputs"
 
 def build_client() -> OpenAI:
     return OpenAI(
@@ -28,6 +33,10 @@ def generate_chapter(previous_chapter: str, requirements: str) -> str:
 
     return resp.choices[0].message.content.strip()
 
+def save_output(text: str, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
 
 if __name__ == "__main__":
     previous_chapter = """
@@ -45,4 +54,8 @@ if __name__ == "__main__":
     """
 
     chapter = generate_chapter(previous_chapter, requirements)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = OUTPUT_DIR / f"draft_{timestamp}.txt"
+    save_output(chapter, output_path)
     print(chapter)
+    print(f"\n[Saved] {output_path}")
