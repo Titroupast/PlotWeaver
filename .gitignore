@@ -1,0 +1,10 @@
+# 忽略 API 密钥文件
+.env
+config.json
+
+# 忽略 Python 缓存
+__pycache__/
+*.py[cod]
+
+# 忽略临时数据
+data/temp/
