@@ -67,5 +67,5 @@ python main.py
 
 ## 🕊️ 关于作者
 
-本项目由 **Titroupast** 发起，致力于探索生成式 AI 与叙事艺术的完美融合。如果你也对 AI 创作感兴趣，欢迎提交 Issue 或 Pull Request，让我们一起编织更精彩的故事吧！♪
+本项目由 **Titroupast & silverhierach** 发起，致力于探索生成式 AI 与叙事艺术的完美融合。如果你也对 AI 创作感兴趣，欢迎提交 Issue 或 Pull Request，让我们一起编织更精彩的故事吧！♪
 
