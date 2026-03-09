@@ -98,7 +98,7 @@ outputs/
   demo/
     run_log.json
     chapters/
-      chapter_004/
+      chapter_005/
         outline.json
         chapter.txt
         title.txt
@@ -107,20 +107,21 @@ outputs/
 说明：
 - `outline.json`：本章提纲
 - `chapter.txt`：本章正文（第一行为标题）
-- `title.txt`：从 inputs 复制的章节名
+- `title.txt`：本章标题
 - `run_log.json`：工具调用日志
 
 ---
 
 ## 7. 工具调用说明
 
-Day4 内置 3 个工具函数（写入 `inputs/demo/memory`）：
+Day4 内置 4 个工具函数：
 
 - `build_characters()` → 生成 `characters.json`
 - `build_world_rules()` → 生成 `world_rules.md`
 - `build_story_so_far()` → 生成 `story_so_far.md`
+- `save_chapter_draft()` → 保存草稿到 outputs，并写入日志
 
-使用 `--refresh-memory` 时会调用以上工具。
+使用 `--refresh-memory` 时会调用前三个工具。
 
 ---
 
