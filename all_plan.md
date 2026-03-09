@@ -213,39 +213,38 @@
 
 ------
 
-## 第 6 天：只沉淀 1 个 skill 草稿
+## 第 6 天：增量记忆与闸门
 
 ### 今天目标
 
-不要一次写 4 个 skill 草稿，只挑 1 个最有价值的做完整。
+建立“增量记忆更新 + 质量闸门”的机制，避免每次全量重建记忆造成耗费与污染。
 
-### 建议二选一
+### 前置条件
 
-- `outline-planner`
-- `continuity-checker`
+第 5 天的审校器完成后，才能启用“模型审校自动闸门”。
 
 ### 今天要做
 
-把这个 skill 草稿写清楚：
-
-- 什么时候触发
-- 输入是什么
-- 输出是什么
-- 检查标准是什么
-- 失败时怎么处理
-- 给 1–2 个示例
+1. 增量记忆更新
+   - 仅对**新生成的章节**提取候选记忆（characters / world_rules / story_so_far 的 delta）
+   - 先写入 `memory/updates/` 作为候选，不直接覆盖主记忆
+2. 质量闸门（依赖 Day5 审校器）
+   - 审校分数/问题通过阈值才允许合并
+   - 未通过则保留候选文件但不合并
+3. 合并策略
+   - 通过闸门后，将 delta 合并进主记忆文件
+   - 保留合并记录，方便回溯
 
 ### 今天产出
 
-- `skills/outline-planner.md`
-  或
-- `skills/continuity-checker.md`
+- `memory/updates/characters_delta.json`
+- `memory/updates/world_rules_delta.md`
+- `memory/updates/story_so_far_delta.md`
+- 一份“闸门规则”文档（阈值与合并规则）
 
 ### 完成标准
 
-这个文档已经能当成以后真正 skill 的雏形。
-
-> 你原稿第 6 天是一次写 4 份准 skill 文档，这对 7 天项目略分散，改成 1 份完整草稿更合适。
+能在不全量重建的前提下，安全地更新记忆；不合格章节不会污染主记忆。
 
 ------
 

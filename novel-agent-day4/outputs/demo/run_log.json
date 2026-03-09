@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "save_chapter_draft",
+    "inputs": {
+      "chapter_id": "chapter_005"
+    },
+    "outputs": {
+      "path": "D:\\github_projects\\PlotWeaver\\novel-agent-day4\\inputs\\demo\\memory\\draft_chapter_005.txt"
+    }
+  }
+]
