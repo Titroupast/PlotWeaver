@@ -1,0 +1,8 @@
+【上一章正文】
+{previous_chapter}
+
+【本次续写要求】
+{requirements}
+
+【风格约束（可选）】
+{style_constraints}
