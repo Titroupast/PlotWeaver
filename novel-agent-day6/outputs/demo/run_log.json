@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "save_chapter_draft",
+    "inputs": {
+      "chapter_id": "chapter_005"
+    },
+    "outputs": {
+      "note": "skipped_write"
+    }
+  }
+]
