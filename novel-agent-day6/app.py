@@ -1,8 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
 import re
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -76,8 +77,8 @@ def generate_outline(
     user_prompt = PLANNER_USER_TEMPLATE.format(
         previous_chapter=previous_chapter.strip(),
         requirements=requirements.strip(),
-        memory_context=memory_context.strip() or "无",
-        style_constraints=style_constraints.strip() or "无",
+        memory_context=memory_context.strip() or "",
+        style_constraints=style_constraints.strip() or "",
     )
 
     last_text = ""
@@ -89,9 +90,8 @@ def generate_outline(
             )
         else:
             fix_prompt = (
-                "上一次输出不是合法 JSON。请修复并仅输出合法 JSON 对象，"
-                "不要添加任何多余文本。\n\n"
-                f"上一次输出：\n{last_text}"
+                "The previous output was not valid JSON. Please output ONLY a valid JSON object.\n\n"
+                f"Previous output:\n{last_text}"
             )
             response = call_chat(client, PLANNER_SYSTEM_PROMPT, fix_prompt, 0.0)
 
@@ -115,7 +115,7 @@ def generate_draft(
     user_prompt = WRITER_USER_TEMPLATE.format(
         previous_chapter=previous_chapter.strip(),
         outline_json=outline_json,
-        memory_context=memory_context.strip() or "无",
+        memory_context=memory_context.strip() or "",
     )
     return call_chat(client, WRITER_SYSTEM_PROMPT, user_prompt, WRITER_TEMPERATURE)
 
@@ -129,8 +129,8 @@ def generate_review(
 ) -> Dict[str, Any]:
     user_prompt = REVIEWER_USER_TEMPLATE.format(
         chapter_text=chapter_text.strip(),
-        character_summary=character_summary.strip() or "无",
-        world_summary=world_summary.strip() or "无",
+        character_summary=character_summary.strip() or "",
+        world_summary=world_summary.strip() or "",
     )
     last_text = ""
     attempts = 1 + max_retry
@@ -139,9 +139,8 @@ def generate_review(
             response = call_chat(client, REVIEWER_SYSTEM_PROMPT, user_prompt, 0.2)
         else:
             fix_prompt = (
-                "上一次输出不是合法 JSON。请修复并仅输出合法 JSON 对象，"
-                "不要添加任何多余文本。\n\n"
-                f"上一次输出：\n{last_text}"
+                "The previous output was not valid JSON. Please output ONLY a valid JSON object.\n\n"
+                f"Previous output:\n{last_text}"
             )
             response = call_chat(client, REVIEWER_SYSTEM_PROMPT, fix_prompt, 0.0)
 
@@ -179,7 +178,7 @@ def resolve_chapter_req_path(novel_id: str, chapter_id: Optional[str]) -> Option
 
 def extract_keywords(text: str, limit: int = 8) -> List[str]:
     tokens = re.findall(r"[\u4e00-\u9fff]{2,4}", text)
-    stopwords = {"这次", "这样", "一个", "这里", "他们", "我们", "你们", "什么", "怎么", "但是"}
+    stopwords = set()
     counts: Dict[str, int] = {}
     for token in tokens:
         if token in stopwords:
@@ -200,12 +199,13 @@ def next_chapter_id(chapter_id: str) -> Optional[str]:
 def split_title_and_body(text: str) -> Dict[str, str]:
     lines = text.strip().splitlines()
     if not lines:
-        return {"title": "## 未命名章节", "body": text.strip()}
+        return {"title": "## Untitled", "body": text.strip()}
     title = lines[0].strip()
     if not title.startswith("## "):
         title = f"## {title}"
-    return {"title": title, "body": "\n".join(lines)}
-
+    # Body must not include the title line (decouple metadata from body text).
+    body = "\n".join(lines[1:]).lstrip("\n").rstrip()
+    return {"title": title, "body": body}
 
 def update_index(index_path: Path, chapter_id: str, title: str, generated: bool = True) -> None:
     index_path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,38 +247,47 @@ def summarize_characters(characters_path: Path, keywords: List[str]) -> List[str
         return []
     data = json.loads(characters_path.read_text(encoding="utf-8"))
     characters = data.get("characters", [])
-    results = []
+    results: List[str] = []
     for entry in characters:
-        name = entry.get("name", "")
+        name = entry.get("display_name") or entry.get("canonical_name") or entry.get("name", "")
         role = entry.get("role", "")
-        summary = f"{name}：{role}"
+        cid = entry.get("character_id") or ""
+        aliases = entry.get("aliases") or []
+        alias_str = ""
+        if aliases:
+            alias_str = " (aliases: " + ", ".join([str(a) for a in aliases[:3] if a]) + ")"
+        summary = f"{name} ({role}) {cid}{alias_str}".strip()
         serialized = json.dumps(entry, ensure_ascii=False)
         if not keywords or any(keyword in serialized for keyword in keywords):
             results.append(summary)
     return results[:6]
 
-
 def build_review_context(memory_dir: Path) -> Dict[str, str]:
     characters_path = memory_dir / "characters.json"
     world_path = memory_dir / "world_rules.md"
 
-    character_summary = ""
+    character_lines: List[str] = []
     if characters_path.exists():
-        data = json.loads(characters_path.read_text(encoding="utf-8"))
-        lines = []
-        for entry in data.get("characters", []):
-            name = entry.get("name", "")
+        try:
+            data = json.loads(characters_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            data = {}
+        for entry in data.get("characters", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("display_name") or entry.get("canonical_name") or entry.get("name", "")
             role = entry.get("role", "")
             if name:
-                lines.append(f"{name}：{role}".strip("："))
-        character_summary = "\n".join(lines[:8])
+                character_lines.append(f"{name} ({role})".strip())
 
-    world_summary = ""
+    world_lines: List[str] = []
     if world_path.exists():
-        lines = [line.strip() for line in world_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        world_summary = "\n".join(lines[:8])
+        world_lines = [line.strip() for line in world_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-    return {"character_summary": character_summary or "无", "world_summary": world_summary or "无"}
+    return {
+        "character_summary": "\n".join(character_lines[:8]),
+        "world_summary": "\n".join(world_lines[:8]),
+    }
 
 
 def evaluate_gate(review: Dict[str, Any], min_score: int, max_repetition: int) -> Dict[str, Any]:
@@ -332,6 +341,78 @@ def merge_story_so_far(base_path: Path, delta_path: Path, max_items: int = 30) -
     base_path.write_text("\n".join(normalized).strip() + "\n", encoding="utf-8")
 
 
+def _stable_legacy_character_id(entry: Dict[str, Any]) -> str:
+    """Best-effort stable id for legacy character cards (migration aid for Day6)."""
+    existing = (entry.get("character_id") or "").strip()
+    if existing:
+        return existing
+    canonical = (
+        (entry.get("canonical_name") or "").strip()
+        or (entry.get("display_name") or "").strip()
+        or (entry.get("name") or "").strip()
+    )
+    role = (entry.get("role") or "").strip()
+    age = entry.get("age")
+    age_str = "" if age is None else str(age)
+    key = f"{canonical}|{role}|{age_str}"
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+    return f"char_legacy_{digest}"
+
+
+def _normalize_character_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    if "canonical_name" not in entry and entry.get("name"):
+        entry["canonical_name"] = entry.get("name")
+    if "display_name" not in entry and entry.get("canonical_name"):
+        entry["display_name"] = entry.get("canonical_name")
+    if "aliases" not in entry or entry.get("aliases") is None:
+        entry["aliases"] = []
+    entry["character_id"] = _stable_legacy_character_id(entry)
+    return entry
+
+
+def _merge_value_into_target(target: Dict[str, Any], key: str, value: Any) -> None:
+    if key in {"character_id"} or value is None:
+        return
+    if isinstance(value, list):
+        existing = target.get(key) or []
+        if not isinstance(existing, list):
+            existing = []
+        seen = set(json.dumps(x, ensure_ascii=False, sort_keys=True) for x in existing)
+        for item in value:
+            sig = json.dumps(item, ensure_ascii=False, sort_keys=True)
+            if sig not in seen:
+                existing.append(item)
+                seen.add(sig)
+        target[key] = existing
+        return
+    if isinstance(value, dict):
+        existing = target.get(key) or {}
+        if not isinstance(existing, dict):
+            existing = {}
+        existing.update(value)
+        target[key] = existing
+        return
+    if value and not target.get(key):
+        target[key] = value
+
+
+def _match_character_candidates(base_chars: List[Dict[str, Any]], canonical_name: str, aliases: List[str]) -> List[Dict[str, Any]]:
+    canonical_name = (canonical_name or "").strip()
+    aliases = [a.strip() for a in (aliases or []) if a and a.strip()]
+    scored: List[tuple[int, Dict[str, Any]]] = []
+    for c in base_chars:
+        score = 0
+        base_canonical = (c.get("canonical_name") or c.get("name") or "").strip()
+        if canonical_name and canonical_name == base_canonical:
+            score += 2
+        base_aliases = set((c.get("aliases") or []))
+        score += len(base_aliases.intersection(aliases))
+        if score > 0:
+            scored.append((score, c))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [c for _, c in scored]
+
+
 def merge_characters(base_path: Path, delta_path: Path) -> None:
     if not delta_path.exists():
         return
@@ -340,39 +421,56 @@ def merge_characters(base_path: Path, delta_path: Path) -> None:
     except json.JSONDecodeError:
         return
 
-    base_data = {"title": "角色设定", "characters": []}
+    base_data: Dict[str, Any] = {"characters": []}
     if base_path.exists():
         try:
             base_data = json.loads(base_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            pass
+            base_data = {"characters": []}
 
-    base_chars = {c.get("name"): c for c in base_data.get("characters", []) if c.get("name")}
-    for entry in delta_data.get("characters", []):
-        name = entry.get("name")
-        if not name:
-            continue
-        if name not in base_chars:
-            base_chars[name] = entry
-            continue
-        target = base_chars[name]
-        for key, value in entry.items():
-            if key == "name":
-                continue
-            if isinstance(value, list):
-                existing = set(target.get(key, []))
-                for item in value:
-                    if item not in existing:
-                        target.setdefault(key, []).append(item)
-                        existing.add(item)
-            elif isinstance(value, dict):
-                target.setdefault(key, {}).update(value)
-            elif value and not target.get(key):
-                target[key] = value
+    base_list: List[Dict[str, Any]] = []
+    for c in base_data.get("characters", []) or []:
+        if isinstance(c, dict):
+            base_list.append(_normalize_character_entry(c))
+    base_by_id = {c.get("character_id"): c for c in base_list if c.get("character_id")}
 
-    base_data["characters"] = list(base_chars.values())
+    pending_review: List[Dict[str, Any]] = []
+    for raw in delta_data.get("characters", []) or []:
+        if not isinstance(raw, dict):
+            continue
+        entry = dict(raw)
+        cid = entry.get("character_id")
+        if isinstance(cid, str) and cid.strip():
+            cid = cid.strip()
+        else:
+            cid = None
+        canonical_name = (entry.get("canonical_name") or entry.get("name") or "").strip()
+        aliases = entry.get("aliases") or []
+
+        if cid and cid in base_by_id:
+            target = base_by_id[cid]
+            for k, v in entry.items():
+                _merge_value_into_target(target, k, v)
+            continue
+
+        candidates = _match_character_candidates(base_list, canonical_name, aliases)
+        if len(candidates) == 1:
+            target = candidates[0]
+            for k, v in entry.items():
+                _merge_value_into_target(target, k, v)
+            continue
+
+        # Ambiguous or no match -> do not auto-merge.
+        entry["character_id"] = cid
+        entry.setdefault("merge_status", "PENDING_REVIEW")
+        pending_review.append(entry)
+
+    base_data["characters"] = base_list
     base_path.write_text(json.dumps(base_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    if pending_review:
+        pending_path = delta_path.parent / "characters_pending_review.json"
+        pending_path.write_text(json.dumps({"characters": pending_review}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def build_memory_context(
     memory_dir: Path,
@@ -386,10 +484,12 @@ def build_memory_context(
     world_path = memory_dir / "world_rules.md"
     story_path = memory_dir / "story_so_far.md"
 
+    # Fact layer (structured): mainly characters in Phase 1
     character_lines = summarize_characters(characters_path, keywords)
-    world_lines = []
-    story_lines = []
 
+    # Summary layer (compressed): world + story snippets
+    world_lines: List[str] = []
+    story_lines: List[str] = []
     if world_path.exists():
         world_lines = pick_lines_by_keywords(
             [line for line in world_path.read_text(encoding="utf-8").splitlines() if line.strip()],
@@ -403,19 +503,18 @@ def build_memory_context(
             limit=5,
         )
 
-    sections = []
+    sections: List[str] = []
     if character_lines:
-        sections.append("【人物设定】\n" + "\n".join(character_lines))
+        sections.append("[FACT] Characters\n" + "\n".join(f"- {ln}" for ln in character_lines))
     if world_lines:
-        sections.append("【世界设定】\n" + "\n".join(world_lines))
+        sections.append("[SUMMARY] World Rules\n" + "\n".join(f"- {ln}" for ln in world_lines))
     if story_lines:
-        sections.append("【剧情摘要】\n" + "\n".join(story_lines))
+        sections.append("[SUMMARY] Story So Far\n" + "\n".join(f"- {ln}" for ln in story_lines))
 
-    if characters_path.exists() or world_path.exists() or story_path.exists():
-        sections.append("【记忆来源】\ncharacters.json / world_rules.md / story_so_far.md")
-
-    return "\n\n".join(sections) if sections else "无"
-
+    if sections:
+        sections.append("[PROMPT] Assemble context for this run (facts + summaries + requirement + previous chapter)")
+        return "\n\n".join(sections)
+    return ""
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Day 6: incremental memory + gate.")
@@ -504,13 +603,13 @@ def main() -> None:
                 suggestions = review_data.get("revision_suggestions", []) or []
                 summary_lines = []
                 if issues:
-                    summary_lines.append("需要修正的问题：")
+                    summary_lines.append("[Last review issues]")
                     summary_lines.extend([f"- {item}" for item in issues[:5]])
                 if suggestions:
-                    summary_lines.append("修改建议：")
+                    summary_lines.append("[Last review suggestions]")
                     summary_lines.extend([f"- {item}" for item in suggestions[:5]])
                 if summary_lines:
-                    requirements = requirements.strip() + "\n\n【上次审校问题】\n" + "\n".join(summary_lines)
+                    requirements = requirements.strip() + "\n\n[Last review summary]\n" + "\n".join(summary_lines)
             except json.JSONDecodeError:
                 pass
 
@@ -588,3 +687,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
