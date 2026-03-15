@@ -1,51 +1,47 @@
 {
   "characters": [
     {
-      "name": "林砚",
-      "role": "",
-      "age": 0,
-      "personality": [],
-      "background": ["找到父亲遗留的铜壳旧怀表及铁盒暗格内的警示纸条"],
-      "abilities": [],
-      "limitations": [],
-      "relationships": {},
-      "motivation": ["想要查清纸条中‘第二个站在你面前的人’的身份"],
-      "key_memories": ["目睹市立钟塔钟声慢半拍、局部时间短暂停摆的异象", "体内‘锚’与怀表时间锁产生剧烈共鸣的经历"],
-      "story_function": [],
-      "beliefs": [],
-      "ambiguity": ["对‘第二个站在你面前的人’的身份存疑"]
+      "character_id": "char_legacy_e8f917278a02",
+      "canonical_name": "林砚",
+      "display_name": "林砚",
+      "aliases": [],
+      "abilities": [
+        "能通过额头锚的金色刻纹触发怀表共鸣"
+      ],
+      "key_memories": [
+        "触发怀表共鸣使其锈迹褪去，恢复与钟房同步的钟摆声",
+        "引发时间流速加快、墙面出现短暂倒计时的异象"
+      ],
+      "merge_status": "CONFIRMED"
     },
     {
-      "name": "苏未",
-      "role": "",
-      "age": 0,
-      "personality": [],
-      "background": [],
-      "abilities": ["能识别认人的时间锁"],
-      "limitations": ["触碰怀表触发时间锁反噬，剩余时间加速流逝"],
-      "relationships": {},
-      "motivation": [],
-      "key_memories": ["触碰怀表使其浮现与自身相关的金色刻纹的经历", "因时间锁反噬陷入昏迷的经历"],
-      "story_function": [],
-      "beliefs": [],
-      "ambiguity": []
+      "character_id": "char_legacy_e0d46b27fa0a",
+      "canonical_name": "苏未",
+      "display_name": "苏未",
+      "aliases": [],
+      "abilities": [
+        "能识别与时坠核心绑定的时间锁"
+      ],
+      "limitations": [
+        "因怀表爆发的红光，剩余时间骤减十分钟"
+      ],
+      "key_memories": [
+        "告知林砚锚的刻纹可触发怀表共鸣"
+      ],
+      "merge_status": "CONFIRMED"
     },
     {
-      "name": "林砚父亲",
-      "role": "林砚的父亲，时间稳定核心‘锚’的相关创造者/持有者",
-      "age": 0,
-      "personality": [],
-      "background": ["留下刻有砚台花的铜壳怀表，怀表带有认人的时间锁", "在铁盒暗格留下警示纸条：‘别信第二个站在你面前的人’"],
-      "abilities": [],
-      "limitations": [],
-      "relationships": {
-        "林砚": "留下时间相关遗物与警示，试图保护其远离危险"
-      },
-      "motivation": [],
-      "key_memories": [],
-      "story_function": ["推动剧情深入，揭示时间核心相关秘密", "留下的线索引发主角对身边人的怀疑"],
-      "beliefs": [],
-      "ambiguity": ["留下的怀表刻纹与林砚、苏未的相关刻纹一致，疑似关联时间核心‘钥匙’"]
+      "character_id": "char_legacy_bb5648275ebc",
+      "canonical_name": "顾潮生",
+      "display_name": "顾潮生",
+      "aliases": [],
+      "key_memories": [
+        "在怀表触发时间异动时急促敲门找林砚"
+      ],
+      "story_function": [
+        "进一步介入时间裂缝事件，推动冲突升级"
+      ],
+      "merge_status": "CONFIRMED"
     }
   ]
 }

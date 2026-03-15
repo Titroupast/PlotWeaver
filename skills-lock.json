@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-agent-development": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "7296a4305ddf292535223784f7c140a06a475585d2b70705f983abd9718318b7"
+    },
+    "architecture-documentation": {
+      "source": "melodic-software/claude-code-plugins",
+      "sourceType": "github",
+      "computedHash": "e5430e77f00e7b18825a197880298e736287c646c73933696cb5a03f5a5234a5"
+    },
+    "create-implementation-plan": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "4764bacd34af8e5c27a85ca01a90197afcf1f1ed1785975ba91d9b80dff60e2d"
+    },
+    "product-requirements": {
+      "source": "cexll/myclaude",
+      "sourceType": "github",
+      "computedHash": "0333518feab4652ee6c9da8525e7e0d73941c7a771deef313b7aad01de5e30de"
+    },
+    "software-architecture-design": {
+      "source": "vasilyu1983/ai-agents-public",
+      "sourceType": "github",
+      "computedHash": "8ab8b1f88522e20d62b7c037d1fd60cb95151af2af1afa0aaa2b259ff481f9c6"
+    },
+    "validate-implementation-plan": {
+      "source": "b-mendoza/agent-skills",
+      "sourceType": "github",
+      "computedHash": "793d0f6627212054188aae27a8514acacb6135467c83adda8a47e528e9979c1b"
+    }
+  }
+}

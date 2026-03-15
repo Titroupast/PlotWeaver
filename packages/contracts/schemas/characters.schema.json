@@ -1,0 +1,169 @@
+{
+  "$defs": {
+    "CharacterContract": {
+      "additionalProperties": false,
+      "properties": {
+        "character_id": {
+          "title": "Character Id",
+          "type": "string"
+        },
+        "canonical_name": {
+          "title": "Canonical Name",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "merge_status": {
+          "$ref": "#/$defs/MergeStatus",
+          "default": "CONFIRMED"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "",
+          "title": "Role"
+        },
+        "age": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Age"
+        },
+        "personality": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Personality",
+          "type": "array"
+        },
+        "background": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Background",
+          "type": "array"
+        },
+        "abilities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Abilities",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "relationships": {
+          "additionalProperties": true,
+          "title": "Relationships",
+          "type": "object"
+        },
+        "motivation": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Motivation",
+          "type": "array"
+        },
+        "key_memories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Key Memories",
+          "type": "array"
+        },
+        "story_function": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Story Function",
+          "type": "array"
+        },
+        "beliefs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Beliefs",
+          "type": "array"
+        },
+        "ambiguity": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ambiguity",
+          "type": "array"
+        },
+        "identities": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Identities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "character_id",
+        "canonical_name",
+        "display_name",
+        "aliases"
+      ],
+      "title": "CharacterContract",
+      "type": "object"
+    },
+    "MergeStatus": {
+      "enum": [
+        "CONFIRMED",
+        "PENDING_REVIEW",
+        "SPLIT_REQUIRED"
+      ],
+      "title": "MergeStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "default": "1.0.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "characters": {
+      "items": {
+        "$ref": "#/$defs/CharacterContract"
+      },
+      "title": "Characters",
+      "type": "array"
+    }
+  },
+  "required": [
+    "characters"
+  ],
+  "title": "CharactersContract",
+  "type": "object"
+}

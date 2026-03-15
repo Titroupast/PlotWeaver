@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "default": "1.0.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "character_consistency_score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Character Consistency Score",
+      "type": "integer"
+    },
+    "world_consistency_score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "World Consistency Score",
+      "type": "integer"
+    },
+    "style_match_score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Style Match Score",
+      "type": "integer"
+    },
+    "repetition_issues": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Repetition Issues",
+      "type": "array"
+    },
+    "revision_suggestions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Revision Suggestions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "character_consistency_score",
+    "world_consistency_score",
+    "style_match_score",
+    "repetition_issues",
+    "revision_suggestions"
+  ],
+  "title": "ReviewContract",
+  "type": "object"
+}

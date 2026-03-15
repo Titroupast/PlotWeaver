@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "ChapterKind": {
+      "enum": [
+        "NORMAL",
+        "PROLOGUE",
+        "SIDE_STORY",
+        "EXTRA"
+      ],
+      "title": "ChapterKind",
+      "type": "string"
+    },
+    "ChapterStatus": {
+      "enum": [
+        "DRAFT",
+        "GENERATED",
+        "REVIEWED",
+        "APPROVED",
+        "PUBLISHED"
+      ],
+      "title": "ChapterStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "default": "1.0.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "chapter_id": {
+      "title": "Chapter Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ChapterKind"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "subtitle": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Subtitle"
+    },
+    "volume_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Volume Id"
+    },
+    "arc_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Arc Id"
+    },
+    "order_index": {
+      "title": "Order Index",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/ChapterStatus"
+    },
+    "summary": {
+      "default": "",
+      "title": "Summary",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "chapter_id",
+    "kind",
+    "title",
+    "order_index",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "ChapterMetaContract",
+  "type": "object"
+}

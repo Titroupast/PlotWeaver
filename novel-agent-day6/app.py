@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import hashlib
+import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -19,6 +20,20 @@ from prompts import (
     WRITER_USER_TEMPLATE,
 )
 from tools import ToolRunner
+PROJECT_ROOT = Path(__file__).parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from packages.contracts.io import (
+    chapter_meta_from_title_compat,
+    load_characters_contract,
+    normalize_memory_gate_from_review,
+    write_chapter_meta_contract,
+    write_characters_contract,
+    write_memory_gate_contract,
+    write_outline_contract,
+    write_review_contract,
+)
 
 BASE_DIR = Path(__file__).parent
 INPUTS_DIR = BASE_DIR / "inputs"
@@ -125,12 +140,21 @@ def generate_review(
     chapter_text: str,
     character_summary: str,
     world_summary: str,
+    requirement_context: Dict[str, Any],
+    chapter_meta: Dict[str, Any],
     max_retry: int = 1,
 ) -> Dict[str, Any]:
     user_prompt = REVIEWER_USER_TEMPLATE.format(
         chapter_text=chapter_text.strip(),
         character_summary=character_summary.strip() or "",
         world_summary=world_summary.strip() or "",
+    )
+    user_prompt = (
+        f"{user_prompt}\n\n"
+        "[Structured continuation requirement JSON]\n"
+        f"{json.dumps(requirement_context, ensure_ascii=False, indent=2)}\n\n"
+        "[Chapter meta JSON]\n"
+        f"{json.dumps(chapter_meta, ensure_ascii=False, indent=2)}"
     )
     last_text = ""
     attempts = 1 + max_retry
@@ -207,6 +231,40 @@ def split_title_and_body(text: str) -> Dict[str, str]:
     body = "\n".join(lines[1:]).lstrip("\n").rstrip()
     return {"title": title, "body": body}
 
+
+def parse_requirement_context(raw_text: str) -> Dict[str, Any]:
+    text = raw_text.strip()
+    default_req = {
+        "chapter_goal": "",
+        "must_include": [],
+        "must_not_include": [],
+        "tone": {"style": "", "pov": "第三人称有限", "language": "中文", "tags": []},
+        "continuity_constraints": [],
+        "target_length": {"unit": "字", "min": 1800, "max": 2400},
+        "optional_notes": "",
+    }
+    if not text:
+        return default_req
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                merged = dict(default_req)
+                merged.update(data)
+                return merged
+        except json.JSONDecodeError:
+            pass
+    default_req["optional_notes"] = text
+    return default_req
+
+
+def build_summary_from_body(body: str, max_len: int = 120) -> str:
+    text = re.sub(r"\s+", " ", body).strip()
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rstrip() + "..."
+
+
 def update_index(index_path: Path, chapter_id: str, title: str, generated: bool = True) -> None:
     index_path.parent.mkdir(parents=True, exist_ok=True)
     title_clean = title.replace("##", "").strip()
@@ -245,7 +303,7 @@ def pick_lines_by_keywords(lines: Iterable[str], keywords: List[str], limit: int
 def summarize_characters(characters_path: Path, keywords: List[str]) -> List[str]:
     if not characters_path.exists():
         return []
-    data = json.loads(characters_path.read_text(encoding="utf-8"))
+    data = load_characters_contract(characters_path)
     characters = data.get("characters", [])
     results: List[str] = []
     for entry in characters:
@@ -268,10 +326,7 @@ def build_review_context(memory_dir: Path) -> Dict[str, str]:
 
     character_lines: List[str] = []
     if characters_path.exists():
-        try:
-            data = json.loads(characters_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            data = {}
+        data = load_characters_contract(characters_path)
         for entry in data.get("characters", []) or []:
             if not isinstance(entry, dict):
                 continue
@@ -466,11 +521,11 @@ def merge_characters(base_path: Path, delta_path: Path) -> None:
         pending_review.append(entry)
 
     base_data["characters"] = base_list
-    base_path.write_text(json.dumps(base_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_characters_contract(base_path, base_data, strict=False)
 
     if pending_review:
         pending_path = delta_path.parent / "characters_pending_review.json"
-        pending_path.write_text(json.dumps({"characters": pending_review}, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_characters_contract(pending_path, {"characters": pending_review}, strict=False)
 
 def build_memory_context(
     memory_dir: Path,
@@ -630,15 +685,35 @@ def main() -> None:
         output_dir = OUTPUTS_DIR / novel_id
 
     outline_path = output_dir / "outline.json"
-    write_text(outline_path, json.dumps(outline, ensure_ascii=False, indent=2))
+    outline = write_outline_contract(outline_path, outline)
 
     draft = generate_draft(client, previous_chapter, outline, memory_context)
     title_and_body = split_title_and_body(draft)
+    chapter_id_for_output = next_id or args.chapter_id or "draft_v4"
+    chapter_summary = build_summary_from_body(title_and_body["body"])
+
+    chapter_meta_payload = {
+        "chapter_id": chapter_id_for_output,
+        "kind": "NORMAL",
+        "title": title_and_body["title"].replace("##", "").strip(),
+        "subtitle": None,
+        "volume_id": None,
+        "arc_id": None,
+        "order_index": int(chapter_id_for_output.replace("chapter_", "")) if chapter_id_for_output.startswith("chapter_") else 0,
+        "status": "GENERATED",
+        "summary": chapter_summary,
+    }
 
     if next_id:
         input_next_dir = INPUTS_DIR / novel_id / "chapters" / next_id
         write_text(input_next_dir / "chapter.txt", title_and_body["body"])
         write_text(input_next_dir / "title.txt", title_and_body["title"])
+        chapter_meta_from_title_compat(
+            input_next_dir / "chapter_meta.json",
+            chapter_id=next_id,
+            title=title_and_body["title"].replace("##", "").strip(),
+            summary=chapter_summary,
+        )
         write_text(input_next_dir / "output.txt", "generated_by=app.py")
         update_index(INPUTS_DIR / novel_id / "chapters" / "index.txt", next_id, title_and_body["title"], True)
 
@@ -646,34 +721,52 @@ def main() -> None:
     write_text(draft_path, title_and_body["body"])
     if args.chapter_id or next_id:
         write_text(output_dir / "title.txt", title_and_body["title"])
+    chapter_meta_path = output_dir / "chapter_meta.json"
+    chapter_meta = write_chapter_meta_contract(
+        chapter_meta_path,
+        chapter_meta_payload,
+        fallback_chapter_id=chapter_id_for_output,
+        fallback_title=title_and_body["title"].replace("##", "").strip(),
+    )
 
     tool_runner.save_chapter_draft(draft, next_id or args.chapter_id or "draft_v4")
     tool_runner.flush()
 
     review_ctx = build_review_context(memory_dir)
+    requirement_context = parse_requirement_context(requirements)
     review = generate_review(
         client,
         title_and_body["body"],
         review_ctx["character_summary"],
         review_ctx["world_summary"],
+        requirement_context,
+        chapter_meta,
     )
     review_path = output_dir / "review.json"
-    write_text(review_path, json.dumps(review, ensure_ascii=False, indent=2))
+    review = write_review_contract(review_path, review)
+
+    gate = normalize_memory_gate_from_review(
+        review=review,
+        min_score=args.gate_min_score,
+        max_repetition=args.gate_max_repetition,
+    )
+    gate_path = output_dir / "memory_gate.json"
+    write_memory_gate_contract(gate_path, gate)
 
     if args.update_memory:
         updates_dir = memory_dir / "updates"
         updates_dir.mkdir(parents=True, exist_ok=True)
-        base_characters = (memory_dir / "characters.json").read_text(encoding="utf-8") if (memory_dir / "characters.json").exists() else ""
+        base_characters = (
+            json.dumps(load_characters_contract(memory_dir / "characters.json"), ensure_ascii=False, indent=2)
+            if (memory_dir / "characters.json").exists()
+            else ""
+        )
         base_world = (memory_dir / "world_rules.md").read_text(encoding="utf-8") if (memory_dir / "world_rules.md").exists() else ""
         base_story = (memory_dir / "story_so_far.md").read_text(encoding="utf-8") if (memory_dir / "story_so_far.md").exists() else ""
 
         tool_runner.build_characters_delta(title_and_body["body"], base_characters)
         tool_runner.build_world_rules_delta(title_and_body["body"], base_world)
         tool_runner.build_story_so_far_delta(title_and_body["body"], base_story)
-
-        gate = evaluate_gate(review, args.gate_min_score, args.gate_max_repetition)
-        gate_path = output_dir / "memory_gate.json"
-        write_text(gate_path, json.dumps(gate, ensure_ascii=False, indent=2))
 
         if gate["pass"]:
             merge_characters(memory_dir / "characters.json", updates_dir / "characters_delta.json")
