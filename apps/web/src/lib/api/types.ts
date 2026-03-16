@@ -52,6 +52,7 @@ export type RunEvent = {
   step: string | null;
   payload_json: Record<string, unknown> | null;
   created_at: string;
+  cursor?: string | null;
 };
 
 export type Artifact = {

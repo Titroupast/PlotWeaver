@@ -49,3 +49,4 @@ class RunEventResponse(BaseModel):
     step: str | None
     payload_json: dict[str, Any] | None
     created_at: datetime
+    cursor: str | None = None

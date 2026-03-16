@@ -37,7 +37,10 @@ export const clientApi = {
     idempotency_key: string;
   }) => post<Run>("/runs", payload),
   getRun: (runId: string) => get<Run>(`/runs/${runId}`),
-  listRunEvents: (runId: string) => get<RunEvent[]>(`/runs/${runId}/events?limit=200`),
+  listRunEvents: (runId: string, afterCursor?: string) =>
+    get<RunEvent[]>(
+      `/runs/${runId}/events?limit=200${afterCursor ? `&after_cursor=${encodeURIComponent(afterCursor)}` : ""}`
+    ),
   listArtifacts: (runId: string) => get<Artifact[]>(`/runs/${runId}/artifacts?limit=100`),
   executeRun: (runId: string) => post<Run>(`/runs/${runId}/execute`, {}),
   humanReviewDecision: (runId: string, decision: "APPROVE" | "REQUEST_REWRITE" | "REJECT", reason?: string) =>

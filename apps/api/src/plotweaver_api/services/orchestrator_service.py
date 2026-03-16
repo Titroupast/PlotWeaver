@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from plotweaver_api.core.contracts import build_payload_hash, validate_artifact_payload
 from plotweaver_api.core.errors import NotFoundError, ValidationError
@@ -154,8 +155,26 @@ class OrchestratorService:
         self.run_repo.session.refresh(run)
         return self._to_run_response(run)
 
-    def list_events(self, run_id: str, limit: int = 200, offset: int = 0) -> list[RunEventResponse]:
-        events = self.event_repo.list_by_run(run_id, limit=limit, offset=offset)
+    def list_events(
+        self,
+        run_id: str,
+        limit: int = 200,
+        offset: int = 0,
+        after_cursor: str | None = None,
+    ) -> list[RunEventResponse]:
+        if after_cursor:
+            try:
+                after_created_at, after_event_id = self._decode_cursor(after_cursor)
+            except ValueError as exc:
+                raise ValidationError("Invalid after_cursor", details={"after_cursor": after_cursor}) from exc
+            events = self.event_repo.list_by_run_after(
+                run_id=run_id,
+                after_created_at=after_created_at,
+                after_event_id=after_event_id,
+                limit=limit,
+            )
+        else:
+            events = self.event_repo.list_by_run(run_id, limit=limit, offset=offset)
         return [
             RunEventResponse(
                 id=str(e.id),
@@ -164,6 +183,7 @@ class OrchestratorService:
                 step=e.step,
                 payload_json=e.payload_json,
                 created_at=e.created_at,
+                cursor=self._encode_cursor(e.created_at, str(e.id)),
             )
             for e in events
         ]
@@ -252,6 +272,18 @@ class OrchestratorService:
             if row.artifact_type == "MEMORY_GATE":
                 return row.payload_json
         return None
+
+    @staticmethod
+    def _encode_cursor(created_at: datetime, event_id: str) -> str:
+        created = created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return f"{created}|{event_id}"
+
+    @staticmethod
+    def _decode_cursor(cursor: str) -> tuple[datetime, UUID | None]:
+        raw_created_at, _, raw_event_id = cursor.partition("|")
+        created_at = datetime.fromisoformat(raw_created_at.replace("Z", "+00:00"))
+        event_id = UUID(raw_event_id) if raw_event_id else None
+        return created_at, event_id
 
     @staticmethod
     def _to_run_response(run: Run) -> RunResponse:
