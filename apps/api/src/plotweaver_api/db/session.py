@@ -14,7 +14,11 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 
 
 def set_tenant_context(session: Session, tenant_id: str) -> None:
-    session.execute(text("SET LOCAL app.current_tenant_id = :tenant_id"), {"tenant_id": tenant_id})
+    # Use set_config() to avoid PostgreSQL SET LOCAL parameter binding syntax issues.
+    session.execute(
+        text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
+        {"tenant_id": tenant_id},
+    )
 
 
 @contextmanager
