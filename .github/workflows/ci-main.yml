@@ -1,0 +1,79 @@
+name: CI Main Gate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "packages/contracts/**"
+      - ".github/workflows/**"
+      - "SPEC.md"
+  workflow_dispatch:
+
+jobs:
+  contract-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend dev dependencies
+        run: pip install -e "apps/api[dev]"
+
+      - name: Contract tests
+        run: pytest -q packages/contracts/tests --cov=packages/contracts --cov-fail-under=90
+
+  api-integration-gate:
+    runs-on: ubuntu-latest
+    needs: contract-gate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend dev dependencies
+        run: pip install -e "apps/api[dev]"
+
+      - name: API tests
+        run: pytest -q apps/api/tests apps/api/tests/integration --cov=plotweaver_api --cov-fail-under=80
+
+  web-e2e-gate:
+    runs-on: ubuntu-latest
+    needs: contract-gate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "apps/web/package-lock.json"
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Web build
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Minimal E2E gate
+        working-directory: apps/web
+        run: npm run e2e

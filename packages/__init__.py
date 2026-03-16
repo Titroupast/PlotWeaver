@@ -1,2 +1,1 @@
-"""Workspace-level Python packages."""
-
+"""Monorepo shared packages namespace."""

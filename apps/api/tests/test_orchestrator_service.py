@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from plotweaver_api.schemas.run import HumanReviewDecisionRequest, RunExecuteRequest
 from plotweaver_api.services.orchestrator_service import OrchestratorService
@@ -46,13 +47,17 @@ class _FakeEventRepo:
         self.items = []
 
     def add(self, event):
-        event.id = f"evt-{len(self.items)+1}"
+        event.id = str(uuid4())
         event.created_at = datetime.now(timezone.utc)
         self.items.append(event)
         return event
 
     def list_by_run(self, run_id: str, limit: int = 200, offset: int = 0):
         return [x for x in self.items if str(x.run_id) == run_id][offset : offset + limit]
+
+    def list_by_run_after(self, run_id: str, after_created_at, after_event_id, limit: int = 200):
+        _ = (after_created_at, after_event_id)
+        return [x for x in self.items if str(x.run_id) == run_id][:limit]
 
 
 class _FakeTaskRunner:
@@ -117,3 +122,58 @@ def test_human_review_decision_invalid_state_raises() -> None:
         assert "not waiting for human review" in str(exc).lower()
     else:
         raise AssertionError("Expected exception")
+
+
+def test_human_review_decisions_cover_all_paths() -> None:
+    run = _make_run()
+    run.state = "WAITING_HUMAN_REVIEW"
+    service = OrchestratorService(
+        run_repo=_FakeRunRepo(run),
+        artifact_repo=_FakeArtifactRepo(),
+        event_repo=_FakeEventRepo(),
+        task_runner=_FakeTaskRunner(),
+    )
+    approved = service.apply_human_review("run-1", HumanReviewDecisionRequest(decision="APPROVE"))
+    assert approved.state == "SUCCEEDED"
+
+    run.state = "WAITING_HUMAN_REVIEW"
+    rewritten = service.apply_human_review("run-1", HumanReviewDecisionRequest(decision="REQUEST_REWRITE"))
+    assert rewritten.state == "RUNNING_WRITER"
+    assert rewritten.current_step == "WRITER"
+
+    run.state = "WAITING_HUMAN_REVIEW"
+    rejected = service.apply_human_review("run-1", HumanReviewDecisionRequest(decision="REJECT", reason="manual reject"))
+    assert rejected.state == "FAILED"
+    assert run.error_code == "PW-RUN-HUMAN-REJECT"
+
+
+def test_execute_invalid_resume_from_step_raises_validation() -> None:
+    run = _make_run()
+    service = OrchestratorService(
+        run_repo=_FakeRunRepo(run),
+        artifact_repo=_FakeArtifactRepo(),
+        event_repo=_FakeEventRepo(),
+        task_runner=_FakeTaskRunner(),
+    )
+    try:
+        service.execute("run-1", RunExecuteRequest(resume_from_step="BAD_STEP"))
+    except Exception as exc:
+        assert "invalid resume_from_step" in str(exc).lower()
+    else:
+        raise AssertionError("Expected validation exception")
+
+
+def test_list_events_after_cursor_path_is_supported() -> None:
+    run = _make_run()
+    service = OrchestratorService(
+        run_repo=_FakeRunRepo(run),
+        artifact_repo=_FakeArtifactRepo(),
+        event_repo=_FakeEventRepo(),
+        task_runner=_FakeTaskRunner(),
+    )
+    service.execute("run-1", RunExecuteRequest())
+    events = service.list_events("run-1")
+    assert events
+    after_cursor = events[0].cursor
+    replay = service.list_events("run-1", after_cursor=after_cursor)
+    assert replay
