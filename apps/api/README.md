@@ -1,15 +1,15 @@
-API app (FastAPI) placeholder.
+﻿API 应用（FastAPI）说明。
 
-## Task B + C quickstart
+## Task B + C 快速开始
 
-### Install
+### 安装
 
 ```powershell
 Set-Location D:\github_projects\PlotWeaver\apps\api
 uv pip install -e .
 ```
 
-### Run API
+### 启动 API
 
 ```powershell
 Set-Location D:\github_projects\PlotWeaver\apps\api
@@ -17,7 +17,17 @@ $env:DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/plotwea
 uvicorn plotweaver_api.main:app --host 0.0.0.0 --port 8000 --app-dir src
 ```
 
-### Run migrations
+### 使用 Docker 运行
+
+在仓库根目录构建并启动：
+
+```powershell
+Set-Location D:\github_projects\PlotWeaver
+docker build -f apps/api/Dockerfile -t plotweaver-api:local .
+docker run --rm -p 8000:8000 --env-file apps/api/.env.example plotweaver-api:local
+```
+
+### 执行数据库迁移
 
 ```powershell
 Set-Location D:\github_projects\PlotWeaver\apps\api
@@ -25,7 +35,7 @@ $env:DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/plotwea
 D:\github_projects\PlotWeaver\.venv\Scripts\alembic.exe upgrade head
 ```
 
-### Optional backfill from Day6 files
+### 可选：从 Day6 文件回填数据库
 
 ```powershell
 Set-Location D:\github_projects\PlotWeaver\apps\api
@@ -33,24 +43,25 @@ $env:DATABASE_URL="postgresql+psycopg://postgres:postgres@127.0.0.1:5432/plotwea
 python scripts/backfill_day6_to_db.py
 ```
 
-### RLS tenant context in app code
+### 应用内 RLS 租户上下文
 
-Each request/transaction should set:
+每个请求/事务应设置：
 
 ```sql
-SET LOCAL app.current_tenant_id = '<tenant_uuid>';
+SELECT set_config('app.current_tenant_id', '<tenant_uuid>', true);
 ```
 
-Current implementation uses `x-tenant-id` header and defaults to
-`00000000-0000-0000-0000-000000000001` for local development.
-### Run tests (Phase 2)
+当前实现读取 `x-tenant-id` 请求头，本地开发默认值为
+`00000000-0000-0000-0000-000000000001`。
+
+### 运行测试（Phase 2）
 
 ```powershell
 Set-Location D:\github_projects\PlotWeaver\apps\api
 python -m pytest -q
 ```
 
-### Key API groups in Phase 2
+### Phase 2 关键 API 分组
 
 - `/api/v1/health/*`
 - `/api/v1/projects/*`
