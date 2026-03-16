@@ -73,5 +73,13 @@ tmp/
 temp/
 data/temp/
 
+
+# =========================
+# skills
+# =========================
+.agent/
+.agents/
+
+
 # Day6 generated runtime outputs
 novel-agent-day6/outputs/
