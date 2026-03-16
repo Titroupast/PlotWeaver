@@ -17,6 +17,7 @@ from .models import (
     Project,
     Requirement,
     Run,
+    RunEvent,
     RunState,
     Tenant,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "Project",
     "Requirement",
     "Run",
+    "RunEvent",
     "RunState",
     "Tenant",
 ]

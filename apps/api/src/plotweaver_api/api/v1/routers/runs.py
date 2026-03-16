@@ -4,8 +4,16 @@ from fastapi import APIRouter, Depends, Query
 
 from plotweaver_api.dependencies.auth import get_user_id
 from plotweaver_api.dependencies.db import get_tenant_id
-from plotweaver_api.dependencies.services import get_run_service
-from plotweaver_api.schemas.run import RunCreateRequest, RunResponse, RunStateUpdateRequest
+from plotweaver_api.dependencies.services import get_orchestrator_service, get_run_service
+from plotweaver_api.schemas.run import (
+    HumanReviewDecisionRequest,
+    RunCreateRequest,
+    RunEventResponse,
+    RunExecuteRequest,
+    RunResponse,
+    RunStateUpdateRequest,
+)
+from plotweaver_api.services.orchestrator_service import OrchestratorService
 from plotweaver_api.services.run_service import RunService
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -43,3 +51,31 @@ def update_run_state(
     service: RunService = Depends(get_run_service),
 ) -> RunResponse:
     return service.update_state(run_id=run_id, payload=payload)
+
+
+@router.post("/{run_id}/execute", response_model=RunResponse)
+def execute_run(
+    run_id: str,
+    payload: RunExecuteRequest | None = None,
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> RunResponse:
+    return service.execute(run_id=run_id, payload=payload)
+
+
+@router.get("/{run_id}/events", response_model=list[RunEventResponse])
+def list_run_events(
+    run_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> list[RunEventResponse]:
+    return service.list_events(run_id=run_id, limit=limit, offset=offset)
+
+
+@router.post("/{run_id}/review-decision", response_model=RunResponse)
+def apply_human_review_decision(
+    run_id: str,
+    payload: HumanReviewDecisionRequest,
+    service: OrchestratorService = Depends(get_orchestrator_service),
+) -> RunResponse:
+    return service.apply_human_review(run_id=run_id, payload=payload)

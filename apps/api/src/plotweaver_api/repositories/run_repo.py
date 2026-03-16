@@ -32,3 +32,14 @@ class RunRepository(RepositoryBase[Run]):
             .offset(offset)
         )
         return list(self.session.scalars(stmt).all())
+
+    def list_retryable(self, limit: int = 100, offset: int = 0) -> list[Run]:
+        stmt = (
+            select(Run)
+            .where(Run.state.in_(["RETRYING", "FAILED"]))
+            .where(Run.deleted_at.is_(None))
+            .order_by(Run.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self.session.scalars(stmt).all())

@@ -40,9 +40,16 @@ class ChapterStatus(str, enum.Enum):
 class RunState(str, enum.Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
+    RUNNING_PLANNER = "RUNNING_PLANNER"
+    RUNNING_WRITER = "RUNNING_WRITER"
+    RUNNING_REVIEWER = "RUNNING_REVIEWER"
+    RUNNING_MEMORY_CURATOR = "RUNNING_MEMORY_CURATOR"
+    WAITING_HUMAN_REVIEW = "WAITING_HUMAN_REVIEW"
+    RETRYING = "RETRYING"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     NEEDS_REVIEW = "NEEDS_REVIEW"
+    CANCELLED = "CANCELLED"
 
 
 class ArtifactType(str, enum.Enum):
@@ -246,8 +253,25 @@ class Run(Base, TenantScopedMixin, AuditSoftDeleteMixin):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    current_step: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    checkpoint_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RunEvent(Base, TenantScopedMixin):
+    __tablename__ = "run_events"
+    __table_args__ = (
+        Index("ix_run_events_tenant_run_created", "tenant_id", "run_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    run_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    step: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class RunArtifact(Base, TenantScopedMixin):

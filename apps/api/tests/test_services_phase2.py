@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 import pytest
 
@@ -13,7 +12,7 @@ from plotweaver_api.services.run_service import RunService
 
 class _FakeTaskRunner:
     def enqueue(self, task_name: str, payload: dict) -> str:
-        assert task_name == "run_generation"
+        assert task_name == "run_orchestration"
         assert "run_id" in payload
         return "task-1"
 
@@ -43,9 +42,10 @@ def test_requirement_contract_validation_missing_keys() -> None:
         validate_requirement_payload({"chapter_goal": "x"})
 
 
-def test_run_service_create_drives_state_to_succeeded() -> None:
+def test_run_service_create_sets_queued_and_checkpoint() -> None:
     service = RunService(repo=_FakeRepo(), task_runner=_FakeTaskRunner())
     payload = RunCreateRequest(project_id="proj-1", idempotency_key="idem-1")
     out = service.create(tenant_id="tenant-1", payload=payload)
-    assert out.state == "SUCCEEDED"
-    assert out.attempt_count == 1
+    assert out.state == "QUEUED"
+    assert out.current_step == "PLANNER"
+    assert out.checkpoint_json["task_id"] == "task-1"

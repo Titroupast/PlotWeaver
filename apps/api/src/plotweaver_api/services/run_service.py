@@ -1,7 +1,5 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from plotweaver_api.core.errors import ConflictError, NotFoundError
 from plotweaver_api.db.models import Run
 from plotweaver_api.repositories.run_repo import RunRepository
@@ -28,33 +26,23 @@ class RunService:
             state="QUEUED",
             idempotency_key=payload.idempotency_key,
             attempt_count=0,
+            retry_count=0,
+            current_step="PLANNER",
+            checkpoint_json={"completed_steps": [], "artifact_ids": {}},
             created_by=user_id,
             updated_by=user_id,
         )
         run = self.repo.add(run)
 
-        try:
-            self.task_runner.enqueue(
-                task_name="run_generation",
-                payload={
-                    "run_id": str(run.id),
-                    "tenant_id": tenant_id,
-                    "project_id": str(run.project_id),
-                },
-            )
-            run.state = "RUNNING"
-            run.attempt_count = (run.attempt_count or 0) + 1
-            run.started_at = datetime.now(timezone.utc)
-
-            # Phase 2: in-process placeholder marks success immediately.
-            run.state = "SUCCEEDED"
-            run.finished_at = datetime.now(timezone.utc)
-            run.error_code = None
-            run.error_message = None
-        except Exception as exc:
-            run.state = "FAILED"
-            run.error_code = "PW-RUN-500"
-            run.error_message = str(exc)
+        task_id = self.task_runner.enqueue(
+            task_name="run_orchestration",
+            payload={
+                "run_id": str(run.id),
+                "tenant_id": tenant_id,
+                "project_id": str(run.project_id),
+            },
+        )
+        run.checkpoint_json["task_id"] = task_id
 
         self.repo.session.flush()
         self.repo.session.refresh(run)
@@ -88,6 +76,9 @@ class RunService:
             state=run.state,
             idempotency_key=run.idempotency_key,
             attempt_count=run.attempt_count,
+            retry_count=run.retry_count,
+            current_step=run.current_step,
+            checkpoint_json=run.checkpoint_json,
             created_at=run.created_at,
             updated_at=run.updated_at,
         )
