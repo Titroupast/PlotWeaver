@@ -27,21 +27,21 @@ export function ReviewDecisionPanel({ runId, runState }: ReviewDecisionPanelProp
         const updated = await clientApi.humanReviewDecision(runId, decision, reason || undefined);
         setRun(updated);
       } catch (e) {
-        setError(mapApiErrorMessage(e, "Failed to submit review decision"));
+        setError(mapApiErrorMessage(e, "提交人工复核决策失败"));
       }
     });
   };
 
   return (
     <section className="card stack">
-      <h3>Human Review Decision 人工复核决策</h3>
+      <h3>人工复核决策</h3>
       <p className="muted">当前状态：{effectiveState}</p>
       {!visible ? (
         <p className="muted">当前 run 不需要人工复核。</p>
       ) : (
         <>
           <div>
-            <label htmlFor="review-reason">Decision Reason (optional)</label>
+            <label htmlFor="review-reason">决策理由（可选）</label>
             <textarea
               id="review-reason"
               value={reason}
@@ -52,13 +52,13 @@ export function ReviewDecisionPanel({ runId, runState }: ReviewDecisionPanelProp
           </div>
           <div className="step-row">
             <button disabled={pending} onClick={() => submitDecision("APPROVE")}>
-              Approve
+              通过
             </button>
             <button className="secondary" disabled={pending} onClick={() => submitDecision("REQUEST_REWRITE")}>
-              Request Rewrite
+              退回重写
             </button>
             <button className="secondary" disabled={pending} onClick={() => submitDecision("REJECT")}>
-              Reject
+              拒绝
             </button>
           </div>
         </>

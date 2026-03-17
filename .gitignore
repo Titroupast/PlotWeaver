@@ -86,3 +86,6 @@ data/temp/
 
 # Day6 generated runtime outputs
 novel-agent-day6/outputs/
+
+# API local generated chapter storage
+apps/api/.local_storage/

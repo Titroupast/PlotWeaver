@@ -18,16 +18,16 @@ export default async function ReviewPage({ params }: Props) {
     <div className="container">
       <section className="card stack">
         <h1>结果审阅</h1>
-        <p className="muted">Run state: {run.state}</p>
+        <p className="muted">运行状态: {run.state}</p>
         <div className="step-row">
           <Link href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}`}>
-            <button className="secondary">Back To Process</button>
+            <button className="secondary">返回生成过程</button>
           </Link>
         </div>
       </section>
       <ReviewDecisionPanel runId={runId} runState={run.state} />
       {artifacts.length === 0 ? (
-        <section className="card">No artifacts yet. Return to process page and execute run.</section>
+        <section className="card">暂无结构化产物，请先执行步骤。</section>
       ) : (
         <ArtifactReview artifacts={artifacts} />
       )}

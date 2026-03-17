@@ -149,7 +149,7 @@ def test_orchestrator_execute_to_succeeded_and_events_present() -> None:
         task_runner=_FakeTaskRunner(),
     )
 
-    out = service.execute("run-1", RunExecuteRequest())
+    out = service.execute("run-1", RunExecuteRequest(auto_continue=True))
     assert out.state == "SUCCEEDED"
     assert set(out.checkpoint_json["completed_steps"]) == {"PLANNER", "WRITER", "REVIEWER", "MEMORY_CURATOR"}
 
@@ -167,7 +167,7 @@ def test_reviewer_suggestions_include_contract_check_lines() -> None:
         task_runner=_FakeTaskRunner(),
     )
 
-    service.execute("run-1", RunExecuteRequest())
+    service.execute("run-1", RunExecuteRequest(auto_continue=True))
     review = next(item for item in artifact_repo.items if item.artifact_type == "REVIEW")
     suggestions = review.payload_json["revision_suggestions"]
     joined = " ".join(suggestions)
@@ -191,7 +191,7 @@ def test_writer_step_persists_chapter_version_and_storage_content() -> None:
         storage=storage,
     )
 
-    service.execute("run-1", RunExecuteRequest())
+    service.execute("run-1", RunExecuteRequest(auto_continue=True))
 
     assert storage.writes
     assert len(run_repo.session.added_versions) == 1
@@ -256,7 +256,7 @@ def test_human_review_decisions_cover_all_paths() -> None:
 
     run.state = "WAITING_HUMAN_REVIEW"
     rewritten = service.apply_human_review("run-1", HumanReviewDecisionRequest(decision="REQUEST_REWRITE"))
-    assert rewritten.state == "RUNNING_WRITER"
+    assert rewritten.state == "WAITING_USER_APPROVAL"
     assert rewritten.current_step == "WRITER"
 
     run.state = "WAITING_HUMAN_REVIEW"
@@ -289,7 +289,7 @@ def test_list_events_after_cursor_path_is_supported() -> None:
         event_repo=_FakeEventRepo(),
         task_runner=_FakeTaskRunner(),
     )
-    service.execute("run-1", RunExecuteRequest())
+    service.execute("run-1", RunExecuteRequest(auto_continue=True))
     events = service.list_events("run-1")
     assert events
     after_cursor = events[0].cursor

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -16,6 +17,7 @@ from plotweaver_api.repositories.artifact_repo import ArtifactRepository
 from plotweaver_api.repositories.run_event_repo import RunEventRepository
 from plotweaver_api.repositories.run_repo import RunRepository
 from plotweaver_api.schemas.run import HumanReviewDecisionRequest, RunEventResponse, RunExecuteRequest, RunResponse
+from plotweaver_api.services.llm_prompts import load_prompt, render_prompt
 from plotweaver_api.storage.interface import StorageClient
 from plotweaver_api.storage.local_storage import LocalStorageClient
 from plotweaver_api.tasks.interface import TaskRunner
@@ -34,6 +36,9 @@ class StepSpec:
 class StepExecutionResult:
     artifact_payload: dict[str, Any]
     chapter_text: str | None = None
+    llm_used: bool = False
+    llm_error: str | None = None
+    llm_provider: str | None = None
 
 
 STEPS: list[StepSpec] = [
@@ -61,28 +66,32 @@ class OrchestratorService:
 
     def execute(self, run_id: str, payload: RunExecuteRequest | None = None) -> RunResponse:
         run = self._get_run(run_id)
+        req = payload or RunExecuteRequest()
 
         if run.state == "WAITING_HUMAN_REVIEW":
             raise ValidationError("Run is waiting for human review", details={"run_id": run_id})
-        if run.state in {"SUCCEEDED", "CANCELLED"}:
+        if run.state in {"SUCCEEDED", "CANCELLED", "FAILED"}:
             return self._to_run_response(run)
 
-        start_step = payload.resume_from_step if payload and payload.resume_from_step else (run.current_step or STEPS[0].name)
-        run.attempt_count = (run.attempt_count or 0) + 1
-        run.started_at = run.started_at or datetime.now(timezone.utc)
-
-        self._emit(run, "RUN_EXECUTION_STARTED", step=start_step, payload={"attempt": run.attempt_count})
+        checkpoint = dict(run.checkpoint_json or {})
+        start_step = req.resume_from_step or checkpoint.get("pending_step") or run.current_step or STEPS[0].name
 
         try:
             start_idx = next(i for i, s in enumerate(STEPS) if s.name == start_step)
         except StopIteration as exc:
             raise ValidationError("Invalid resume_from_step", details={"step": start_step}) from exc
 
+        run.attempt_count = (run.attempt_count or 0) + 1
+        run.started_at = run.started_at or datetime.now(timezone.utc)
+        self._emit(run, "RUN_EXECUTION_STARTED", step=start_step, payload={"attempt": run.attempt_count})
+
         requirement_ctx = self._load_requirement_context(run)
         step_context: dict[str, Any] = {"requirement": requirement_ctx}
 
         try:
-            for step in STEPS[start_idx:]:
+            idx = start_idx
+            while idx < len(STEPS):
+                step = STEPS[idx]
                 run.current_step = step.name
                 run.state = step.running_state
                 self._emit(run, "STEP_STARTED", step=step.name)
@@ -105,25 +114,52 @@ class OrchestratorService:
                 artifact_ids[step.name] = str(artifact.id)
                 checkpoint["completed_steps"] = completed
                 checkpoint["artifact_ids"] = artifact_ids
-                run.checkpoint_json = checkpoint
 
                 self._emit(
                     run,
                     "STEP_COMPLETED",
                     step=step.name,
-                    payload={"artifact_id": str(artifact.id), "artifact_type": step.artifact_type},
+                    payload={
+                        "artifact_id": str(artifact.id),
+                        "artifact_type": step.artifact_type,
+                        "artifact_preview": validated_payload,
+                        "chapter_text_preview": (execution.chapter_text[:500] if execution.chapter_text else None),
+                        "llm_used": execution.llm_used,
+                        "llm_error": execution.llm_error,
+                        "llm_provider": execution.llm_provider,
+                    },
                 )
 
-            gate_payload = self._find_gate_payload(run)
-            gate_failed = bool(gate_payload and not gate_payload.get("pass", gate_payload.get("passed", True)))
-            gate_manual = bool(gate_payload and gate_payload.get("recommended_action") == "REVIEW_MANUALLY")
-            if gate_payload and (gate_failed or gate_manual):
-                run.state = "WAITING_HUMAN_REVIEW"
-                self._emit(run, "HUMAN_REVIEW_REQUIRED", step="MEMORY_CURATOR", payload=gate_payload)
-            else:
-                run.state = "SUCCEEDED"
-                run.finished_at = datetime.now(timezone.utc)
-                self._emit(run, "RUN_SUCCEEDED", payload={"completed_steps": run.checkpoint_json.get("completed_steps", [])})
+                idx += 1
+                if not req.auto_continue and idx < len(STEPS):
+                    next_step = STEPS[idx].name
+                    checkpoint["pending_step"] = next_step
+                    run.checkpoint_json = checkpoint
+                    run.current_step = next_step
+                    run.state = "WAITING_USER_APPROVAL"
+                    self._emit(
+                        run,
+                        "STEP_AWAITING_APPROVAL",
+                        step=next_step,
+                        payload={"from_step": step.name, "next_step": next_step},
+                    )
+                    break
+
+                checkpoint.pop("pending_step", None)
+                run.checkpoint_json = checkpoint
+
+            if idx >= len(STEPS):
+                gate_payload = self._find_gate_payload(run)
+                gate_failed = bool(gate_payload and not gate_payload.get("pass", gate_payload.get("passed", True)))
+                gate_manual = bool(gate_payload and gate_payload.get("recommended_action") == "REVIEW_MANUALLY")
+                if gate_payload and (gate_failed or gate_manual):
+                    run.state = "WAITING_HUMAN_REVIEW"
+                    run.current_step = "MEMORY_CURATOR"
+                    self._emit(run, "HUMAN_REVIEW_REQUIRED", step="MEMORY_CURATOR", payload=gate_payload)
+                else:
+                    run.state = "SUCCEEDED"
+                    run.finished_at = datetime.now(timezone.utc)
+                    self._emit(run, "RUN_SUCCEEDED", payload={"completed_steps": run.checkpoint_json.get("completed_steps", [])})
 
             run.error_code = None
             run.error_message = None
@@ -165,8 +201,11 @@ class OrchestratorService:
             run.state = "SUCCEEDED"
             run.finished_at = datetime.now(timezone.utc)
         elif decision == "REQUEST_REWRITE":
-            run.state = "RUNNING_WRITER"
+            run.state = "WAITING_USER_APPROVAL"
             run.current_step = "WRITER"
+            checkpoint = dict(run.checkpoint_json or {})
+            checkpoint["pending_step"] = "WRITER"
+            run.checkpoint_json = checkpoint
         elif decision == "REJECT":
             run.state = "FAILED"
             run.finished_at = datetime.now(timezone.utc)
@@ -220,8 +259,23 @@ class OrchestratorService:
 
     def _execute_step(self, run: Run, step: str, ctx: dict[str, Any]) -> StepExecutionResult:
         requirement = dict(ctx.get("requirement") or {})
+        previous_chapter = self._read_latest_target_chapter_text(run)
+        memory_context = str(requirement.get("optional_notes") or "")
 
         if step == "PLANNER":
+            llm_payload, llm_error = self._planner_with_llm(
+                requirement=requirement,
+                previous_chapter=previous_chapter,
+                memory_context=memory_context,
+            )
+            if llm_payload is not None:
+                return StepExecutionResult(
+                    artifact_payload=llm_payload,
+                    llm_used=True,
+                    llm_error=None,
+                    llm_provider="ARK",
+                )
+
             chapter_goal = str(requirement.get("chapter_goal") or "推进当前章节主线并埋下下一章悬念")
             must_include = [str(x).strip() for x in (requirement.get("must_include") or []) if str(x).strip()]
             must_not_include = [str(x).strip() for x in (requirement.get("must_not_include") or []) if str(x).strip()]
@@ -238,15 +292,26 @@ class OrchestratorService:
                     "beats": beats,
                     "foreshadowing": foreshadowing,
                     "ending_hook": "在结尾抛出新的不确定性，驱动下一章",
-                }
+                },
+                llm_used=False,
+                llm_error=llm_error,
+                llm_provider="ARK",
             )
 
         if step == "WRITER":
             outline = ctx.get("PLANNER") or self._find_artifact_payload(run, "OUTLINE") or {}
             target_chapter = self._get_target_chapter(run)
+
+            llm_result, llm_error = self._writer_with_llm(
+                requirement=requirement,
+                outline=outline,
+                target_chapter=target_chapter,
+            )
+            if llm_result is not None:
+                return llm_result
+
             now = datetime.now(timezone.utc).replace(microsecond=0)
             created_iso = now.isoformat().replace("+00:00", "Z")
-
             title = (target_chapter.title if target_chapter else "Generated Chapter") or "Generated Chapter"
             chapter_goal = str(outline.get("chapter_goal") or requirement.get("chapter_goal") or "继续推进剧情")
             beats = [str(x) for x in (outline.get("beats") or [])]
@@ -267,12 +332,24 @@ class OrchestratorService:
                     "updated_at": created_iso,
                 },
                 chapter_text=chapter_text,
+                llm_used=False,
+                llm_error=llm_error,
+                llm_provider="ARK",
             )
 
         if step == "REVIEWER":
             chapter_text = str(ctx.get("chapter_text") or "")
             if not chapter_text:
                 chapter_text = self._read_latest_target_chapter_text(run)
+
+            llm_payload, llm_error = self._reviewer_with_llm(requirement=requirement, chapter_text=chapter_text)
+            if llm_payload is not None:
+                return StepExecutionResult(
+                    artifact_payload=llm_payload,
+                    llm_used=True,
+                    llm_error=None,
+                    llm_provider="ARK",
+                )
 
             must_include = [str(x).strip() for x in (requirement.get("must_include") or []) if str(x).strip()]
             must_not_include = [str(x).strip() for x in (requirement.get("must_not_include") or []) if str(x).strip()]
@@ -300,11 +377,23 @@ class OrchestratorService:
                     "style_match_score": style_score,
                     "repetition_issues": banned_hit,
                     "revision_suggestions": suggestions,
-                }
+                },
+                llm_used=False,
+                llm_error=llm_error,
+                llm_provider="ARK",
             )
 
         if step == "MEMORY_CURATOR":
             review = ctx.get("REVIEWER") or self._find_artifact_payload(run, "REVIEW") or {}
+            llm_payload, llm_error = self._memory_gate_with_llm(review)
+            if llm_payload is not None:
+                return StepExecutionResult(
+                    artifact_payload=llm_payload,
+                    llm_used=True,
+                    llm_error=None,
+                    llm_provider="ARK",
+                )
+
             min_score = min(
                 int(review.get("character_consistency_score", 0)),
                 int(review.get("world_consistency_score", 0)),
@@ -317,7 +406,10 @@ class OrchestratorService:
                     "pass": passed,
                     "issues": issues,
                     "recommended_action": "AUTO_MERGE" if passed else "REVIEW_MANUALLY",
-                }
+                },
+                llm_used=False,
+                llm_error=llm_error,
+                llm_provider="ARK",
             )
 
         raise ValidationError("Unsupported orchestration step", details={"step": step})
@@ -479,10 +571,154 @@ class OrchestratorService:
         )
         return self.artifact_repo.add(artifact)
 
+    def _call_llm_text(
+        self, system_prompt: str, user_prompt: str, temperature: float = 0.2
+    ) -> tuple[str | None, str | None]:
+        if not settings.ark_api_key or not settings.ark_model:
+            return None, "MISSING_ARK_CONFIG"
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=settings.ark_api_key, base_url=settings.ark_base_url)
+            resp = client.chat.completions.create(
+                model=settings.ark_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+            )
+            content = resp.choices[0].message.content
+            if not content:
+                return None, "EMPTY_LLM_RESPONSE"
+            return content.strip(), None
+        except Exception as exc:
+            return None, f"LLM_CALL_FAILED: {exc}"
+
+    def _call_llm_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        max_retry: int = 1,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        text, err = self._call_llm_text(system_prompt, user_prompt, temperature=temperature)
+        if text is None:
+            return None, err
+        attempts = 1 + max_retry
+        current_text = text
+        for _ in range(attempts):
+            parsed = self._extract_json_object(current_text)
+            if parsed is not None:
+                return parsed, None
+            retry_text, retry_err = self._call_llm_text(
+                system_prompt,
+                "请只输出 JSON 对象，不要输出额外解释。",
+                temperature=0,
+            )
+            current_text = retry_text or ""
+            err = retry_err or err
+        return None, err or "INVALID_JSON_LLM_RESPONSE"
+
+    @staticmethod
+    def _extract_json_object(text: str) -> dict[str, Any] | None:
+        raw = text.strip()
+        candidates = [raw]
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidates.append(raw[start : end + 1])
+        for item in candidates:
+            try:
+                data = json.loads(item)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                continue
+        return None
+
+    def _planner_with_llm(
+        self,
+        requirement: dict[str, Any],
+        previous_chapter: str,
+        memory_context: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        system_prompt = load_prompt("planner_system.txt")
+        user_prompt = render_prompt(
+            "planner_user.txt",
+            previous_chapter=previous_chapter,
+            requirement_json=json.dumps(requirement, ensure_ascii=False, indent=2),
+            memory_context=memory_context,
+        )
+        return self._call_llm_json(system_prompt, user_prompt)
+
+    def _writer_with_llm(
+        self,
+        requirement: dict[str, Any],
+        outline: dict[str, Any],
+        target_chapter: Chapter | None,
+    ) -> tuple[StepExecutionResult | None, str | None]:
+        chapter_hint = {
+            "title": target_chapter.title if target_chapter else "Generated Chapter",
+            "kind": target_chapter.kind if target_chapter else "NORMAL",
+            "order_index": target_chapter.order_index if target_chapter else 1,
+            "chapter_id": target_chapter.chapter_key if target_chapter else None,
+        }
+        system_prompt = load_prompt("writer_system.txt")
+        user_prompt = render_prompt(
+            "writer_user.txt",
+            requirement_json=json.dumps(requirement, ensure_ascii=False, indent=2),
+            outline_json=json.dumps(outline, ensure_ascii=False, indent=2),
+            chapter_hint_json=json.dumps(chapter_hint, ensure_ascii=False, indent=2),
+        )
+        payload, err = self._call_llm_json(system_prompt, user_prompt, temperature=0.7)
+        if payload is None:
+            return None, err
+        chapter_meta = payload.get("chapter_meta") if isinstance(payload.get("chapter_meta"), dict) else {}
+        chapter_text = str(payload.get("chapter_text") or "").strip()
+        if not chapter_text:
+            return None, "EMPTY_CHAPTER_TEXT"
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        chapter_meta.setdefault("chapter_id", chapter_hint["chapter_id"] or "chapter_auto")
+        chapter_meta.setdefault("kind", chapter_hint["kind"] or "NORMAL")
+        chapter_meta.setdefault("title", chapter_hint["title"] or "Generated Chapter")
+        chapter_meta.setdefault("subtitle", None)
+        chapter_meta.setdefault("volume_id", None)
+        chapter_meta.setdefault("arc_id", None)
+        chapter_meta.setdefault("order_index", chapter_hint["order_index"] or 1)
+        chapter_meta.setdefault("status", "GENERATED")
+        chapter_meta.setdefault("summary", chapter_text[:120])
+        chapter_meta.setdefault("created_at", now)
+        chapter_meta.setdefault("updated_at", now)
+        return (
+            StepExecutionResult(
+                artifact_payload=chapter_meta,
+                chapter_text=chapter_text,
+                llm_used=True,
+                llm_error=None,
+                llm_provider="ARK",
+            ),
+            None,
+        )
+
+    def _reviewer_with_llm(
+        self, requirement: dict[str, Any], chapter_text: str
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        system_prompt = load_prompt("reviewer_system.txt")
+        user_prompt = render_prompt(
+            "reviewer_user.txt",
+            requirement_json=json.dumps(requirement, ensure_ascii=False, indent=2),
+            chapter_text=chapter_text,
+        )
+        return self._call_llm_json(system_prompt, user_prompt)
+
+    def _memory_gate_with_llm(self, review: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+        system_prompt = load_prompt("memory_curator_system.txt")
+        user_prompt = render_prompt("memory_curator_user.txt", review_json=json.dumps(review, ensure_ascii=False, indent=2))
+        return self._call_llm_json(system_prompt, user_prompt)
+
     @staticmethod
     def _hash_payload(payload: dict[str, Any]) -> str:
-        import json
-
         return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
     def _emit(self, run: Run, event_type: str, step: str | None = None, payload: dict[str, Any] | None = None) -> None:

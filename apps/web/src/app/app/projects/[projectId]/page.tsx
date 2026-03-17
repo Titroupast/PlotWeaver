@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { serverApi } from "@/lib/api/server";
@@ -24,7 +24,7 @@ export default async function ProjectDetailPage({ params }: Props) {
     <div className="container">
       <section className="card stack">
         <h1>{project.title}</h1>
-        <p className="muted">{project.description ?? "No description"}</p>
+        <p className="muted">{project.description ?? "暂无简介"}</p>
       </section>
       <section className="grid">
         {chapters.map((chapter) => (
@@ -33,11 +33,11 @@ export default async function ProjectDetailPage({ params }: Props) {
               <h3>{chapter.title}</h3>
               <span className="pill">{chapter.status}</span>
             </div>
-            <p className="muted">{chapter.summary || "No summary"}</p>
+            <p className="muted">{chapter.summary || "暂无摘要"}</p>
             <div className="step-row">
-              <span className="muted">order: {chapter.order_index}</span>
+              <span className="muted">章节序号: {chapter.order_index}</span>
               <Link href={`/app/projects/${projectId}/chapters/${chapter.id}/configure`}>
-                <button>Configure Continuation</button>
+                <button>进入续写配置</button>
               </Link>
             </div>
           </article>

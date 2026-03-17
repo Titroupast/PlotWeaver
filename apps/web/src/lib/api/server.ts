@@ -48,7 +48,8 @@ export const serverApi = {
     requirement_id?: string;
     idempotency_key: string;
   }) => post<Run>("/runs", payload),
-  executeRun: (runId: string) => post<Run>(`/runs/${runId}/execute`, {}),
+  executeRun: (runId: string, payload?: { auto_continue?: boolean; resume_from_step?: string }) =>
+    post<Run>(`/runs/${runId}/execute`, payload ?? {}),
   getRun: (runId: string) => get<Run>(`/runs/${runId}`),
   listRunEvents: (runId: string) => get<RunEvent[]>(`/runs/${runId}/events?limit=200`),
   listArtifacts: (runId: string) => get<Artifact[]>(`/runs/${runId}/artifacts?limit=100`)

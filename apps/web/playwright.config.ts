@@ -13,10 +13,11 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     port: 3000,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     env: {
       NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:3000/mock-api/api/v1",
-      NEXT_PUBLIC_TENANT_ID: "00000000-0000-0000-0000-000000000001"
+      NEXT_PUBLIC_TENANT_ID: "00000000-0000-0000-0000-000000000001",
+      PLAYWRIGHT_API_BASE_URL: "http://127.0.0.1:3000/mock-api/api/v1"
     }
   },
   projects: [

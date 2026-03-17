@@ -1,0 +1,5 @@
+﻿[续写需求 JSON]
+{requirement_json}
+
+[章节正文]
+{chapter_text}

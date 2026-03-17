@@ -45,7 +45,8 @@ export const clientApi = {
   listArtifacts: (runId: string) => get<Artifact[]>(`/runs/${runId}/artifacts?limit=100`),
   getLatestChapterContent: (projectId: string, chapterId: string) =>
     get<ChapterLatestContent>(`/projects/${projectId}/chapters/${chapterId}/latest-content`),
-  executeRun: (runId: string) => post<Run>(`/runs/${runId}/execute`, {}),
+  executeRun: (runId: string, payload?: { auto_continue?: boolean; resume_from_step?: string }) =>
+    post<Run>(`/runs/${runId}/execute`, payload ?? {}),
   humanReviewDecision: (runId: string, decision: "APPROVE" | "REQUEST_REWRITE" | "REJECT", reason?: string) =>
     post<Run>(`/runs/${runId}/review-decision`, { decision, reason })
 };

@@ -1,0 +1,8 @@
+﻿[续写需求 JSON]
+{requirement_json}
+
+[规划输出 OUTLINE JSON]
+{outline_json}
+
+[章节元信息提示]
+{chapter_hint_json}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -41,9 +41,13 @@ export function ConfigureRunForm({ projectId, chapterId }: ConfigureRunFormProps
       setSubmitError(null);
       try {
         const payloadJson = {
+          chapter_goal: values.chapterGoal,
           must_include: listFromLines(values.mustInclude),
           must_not_include: listFromLines(values.mustNotInclude),
-          continuity_constraints: listFromLines(values.continuityConstraints)
+          continuity_constraints: listFromLines(values.continuityConstraints),
+          tone: "",
+          target_length: 0,
+          optional_notes: ""
         };
 
         const requirement = await clientApi.createRequirement(projectId, {
@@ -61,7 +65,7 @@ export function ConfigureRunForm({ projectId, chapterId }: ConfigureRunFormProps
 
         router.push(`/app/projects/${projectId}/chapters/${chapterId}/runs/${run.id}`);
       } catch (error) {
-        setSubmitError(mapApiErrorMessage(error, "Failed to create requirement or run"));
+        setSubmitError(mapApiErrorMessage(error, "创建 requirement 或 run 失败"));
       }
     });
   };
@@ -69,29 +73,29 @@ export function ConfigureRunForm({ projectId, chapterId }: ConfigureRunFormProps
   return (
     <form className="stack" onSubmit={handleSubmit(onSubmit)}>
       <div>
-        <label htmlFor="chapterGoal">Chapter Goal</label>
+        <label htmlFor="chapterGoal">章节目标</label>
         <textarea
           id="chapterGoal"
           rows={4}
-          {...register("chapterGoal", { required: "Chapter goal is required" })}
+          {...register("chapterGoal", { required: "章节目标不能为空" })}
         />
         {errors.chapterGoal ? <p className="status-danger">{errors.chapterGoal.message}</p> : null}
       </div>
       <div>
-        <label htmlFor="mustInclude">Must Include (one per line)</label>
+        <label htmlFor="mustInclude">必须包含（每行一个）</label>
         <textarea id="mustInclude" rows={5} {...register("mustInclude")} />
       </div>
       <div>
-        <label htmlFor="mustNotInclude">Must Not Include (one per line)</label>
+        <label htmlFor="mustNotInclude">不得包含（每行一个）</label>
         <textarea id="mustNotInclude" rows={5} {...register("mustNotInclude")} />
       </div>
       <div>
-        <label htmlFor="continuityConstraints">Continuity Constraints (one per line)</label>
+        <label htmlFor="continuityConstraints">连续性约束（每行一个）</label>
         <textarea id="continuityConstraints" rows={5} {...register("continuityConstraints")} />
       </div>
       <div className="step-row">
         <button type="submit" disabled={pending}>
-          {pending ? "Creating Run..." : "Create Requirement & Run"}
+          {pending ? "创建中..." : "创建需求并进入执行"}
         </button>
       </div>
       {submitError ? <p className="status-danger">{submitError}</p> : null}

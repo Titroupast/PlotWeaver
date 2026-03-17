@@ -35,6 +35,7 @@ class RunStateUpdateRequest(BaseModel):
 
 class RunExecuteRequest(BaseModel):
     resume_from_step: str | None = None
+    auto_continue: bool = False
 
 
 class HumanReviewDecisionRequest(BaseModel):

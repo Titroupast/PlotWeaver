@@ -21,10 +21,10 @@ export default async function RunProcessPage({ params }: Props) {
     <div className="container stack">
       <section className="card stack">
         <h1>生成过程</h1>
-        <p className="muted">Run ID: {runId}</p>
+        <p className="muted">运行 ID: {runId}</p>
         <div className="step-row">
           <Link href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/review`}>
-            <button className="secondary">Go To Review</button>
+            <button className="secondary">查看审阅页</button>
           </Link>
         </div>
       </section>
@@ -32,7 +32,7 @@ export default async function RunProcessPage({ params }: Props) {
       {latestContent ? (
         <section className="card stack">
           <div className="step-row">
-            <h3>Latest Chapter Content 最新正文</h3>
+            <h3>最新正文</h3>
             <span className="pill">v{latestContent.version_no}</span>
           </div>
           <p className="muted">

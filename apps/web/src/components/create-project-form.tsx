@@ -26,7 +26,7 @@ export function CreateProjectForm() {
         setDescription("");
         router.refresh();
       } catch (err) {
-        setError(mapApiErrorMessage(err, "Failed to create project"));
+        setError(mapApiErrorMessage(err, "创建项目失败"));
       }
     });
   };
@@ -34,28 +34,28 @@ export function CreateProjectForm() {
   return (
     <form className="stack" onSubmit={onSubmit}>
       <div>
-        <label htmlFor="projectTitle">Project Title</label>
+        <label htmlFor="projectTitle">项目标题</label>
         <input
           id="projectTitle"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="输入项目标题"
+          placeholder="请输入项目标题"
           required
         />
       </div>
       <div>
-        <label htmlFor="projectDesc">Description</label>
+        <label htmlFor="projectDesc">项目简介</label>
         <textarea
           id="projectDesc"
           rows={3}
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          placeholder="可选：项目简介"
+          placeholder="可选：项目背景或风格"
         />
       </div>
       <div className="step-row">
         <button type="submit" disabled={pending || !title.trim()}>
-          {pending ? "Creating..." : "Create Project"}
+          {pending ? "创建中..." : "创建项目"}
         </button>
       </div>
       {error ? <p className="status-danger">{error}</p> : null}

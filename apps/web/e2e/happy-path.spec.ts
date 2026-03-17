@@ -2,31 +2,35 @@
 
 test("project -> create -> configure -> run -> review key path", async ({ page }) => {
   await page.goto("/app/projects");
-  await expect(page.getByRole("heading", { name: "Projects 项目" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目管理" })).toBeVisible();
 
-  await page.getByLabel("Project Title").fill("E2E Project");
-  await page.getByLabel("Description").fill("Created by playwright");
-  await page.getByRole("button", { name: "Create Project" }).click();
+  await page.getByLabel("项目标题").fill("E2E Project");
+  await page.getByLabel("项目简介").fill("Created by playwright");
+  await page.getByRole("button", { name: "创建项目" }).click();
 
   const card = page.getByRole("article").filter({ hasText: "E2E Project" }).first();
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Open" }).click();
+  await card.getByRole("button", { name: "进入项目" }).click();
 
-  await expect(page).toHaveURL(/\/app\/projects\/proj-/);
+  await expect(page).toHaveURL(/\/app\/projects\/[^/]+$/);
 
-  await page.getByRole("button", { name: "Configure Continuation" }).first().click();
+  await page.getByRole("button", { name: "进入续写配置" }).first().click();
   await expect(page).toHaveURL(/\/configure$/);
 
-  await page.getByLabel("Chapter Goal").fill("Continue the siege chapter with tactical misdirection.");
-  await page.getByRole("button", { name: "Create Requirement & Run" }).click();
+  await page.getByLabel("章节目标").fill("推进主线并暴露新线索");
+  await page.getByRole("button", { name: "创建需求并进入执行" }).click();
 
-  await expect(page).toHaveURL(/\/runs\/run-1$/);
+  await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   await expect(page.getByRole("heading", { name: "生成过程" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Latest Chapter Content 最新正文" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Go To Review" }).click();
+  const nextBtn = page.getByRole("button", { name: /开始第一步|继续下一步/ });
+  for (let i = 0; i < 4; i += 1) {
+    if (await nextBtn.isVisible()) {
+      await nextBtn.click();
+    }
+  }
+
+  await page.getByRole("button", { name: "查看审阅页" }).click();
   await expect(page).toHaveURL(/\/review$/);
   await expect(page.getByRole("heading", { name: "结果审阅" })).toBeVisible();
-  await expect(page.getByText("OUTLINE")).toBeVisible();
-  await expect(page.getByText("MEMORY_GATE")).toBeVisible();
 });

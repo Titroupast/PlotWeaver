@@ -1,0 +1,8 @@
+﻿[上一章正文]
+{previous_chapter}
+
+[续写需求 JSON]
+{requirement_json}
+
+[补充记忆上下文]
+{memory_context}

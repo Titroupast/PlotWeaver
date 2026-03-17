@@ -18,6 +18,9 @@ export class ApiError extends Error {
 }
 
 export function getApiBaseUrl(): string {
+  if (process.env.PLAYWRIGHT_API_BASE_URL) {
+    return process.env.PLAYWRIGHT_API_BASE_URL;
+  }
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
 }
 
