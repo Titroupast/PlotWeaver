@@ -2,12 +2,8 @@ name: Deploy API Container
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - "apps/api/**"
-      - "packages/contracts/**"
-      - ".github/workflows/deploy-api-container.yml"
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
