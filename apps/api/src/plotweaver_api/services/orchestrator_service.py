@@ -1,19 +1,24 @@
 ﻿from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from plotweaver_api.core.contracts import build_payload_hash, validate_artifact_payload
+from sqlalchemy import func, select
+
+from plotweaver_api.core.contracts import validate_artifact_payload
 from plotweaver_api.core.errors import NotFoundError, ValidationError
-from plotweaver_api.db.models import Run, RunArtifact, RunEvent
+from plotweaver_api.db.models import Chapter, ChapterVersion, Run, RunArtifact, RunEvent
+from plotweaver_api.db.settings import settings
 from plotweaver_api.repositories.artifact_repo import ArtifactRepository
 from plotweaver_api.repositories.run_event_repo import RunEventRepository
 from plotweaver_api.repositories.run_repo import RunRepository
 from plotweaver_api.schemas.run import HumanReviewDecisionRequest, RunEventResponse, RunExecuteRequest, RunResponse
+from plotweaver_api.storage.interface import StorageClient
+from plotweaver_api.storage.local_storage import LocalStorageClient
 from plotweaver_api.tasks.interface import TaskRunner
-
 
 MAX_RETRY = 3
 
@@ -23,6 +28,12 @@ class StepSpec:
     name: str
     running_state: str
     artifact_type: str
+
+
+@dataclass(frozen=True)
+class StepExecutionResult:
+    artifact_payload: dict[str, Any]
+    chapter_text: str | None = None
 
 
 STEPS: list[StepSpec] = [
@@ -40,11 +51,13 @@ class OrchestratorService:
         artifact_repo: ArtifactRepository,
         event_repo: RunEventRepository,
         task_runner: TaskRunner,
+        storage: StorageClient | None = None,
     ):
         self.run_repo = run_repo
         self.artifact_repo = artifact_repo
         self.event_repo = event_repo
         self.task_runner = task_runner
+        self.storage = storage or LocalStorageClient(root_dir=settings.storage_local_root)
 
     def execute(self, run_id: str, payload: RunExecuteRequest | None = None) -> RunResponse:
         run = self._get_run(run_id)
@@ -65,15 +78,24 @@ class OrchestratorService:
         except StopIteration as exc:
             raise ValidationError("Invalid resume_from_step", details={"step": start_step}) from exc
 
+        requirement_ctx = self._load_requirement_context(run)
+        step_context: dict[str, Any] = {"requirement": requirement_ctx}
+
         try:
             for step in STEPS[start_idx:]:
                 run.current_step = step.name
                 run.state = step.running_state
                 self._emit(run, "STEP_STARTED", step=step.name)
 
-                artifact_payload = self._build_step_payload(run, step.name)
-                validated_payload = validate_artifact_payload(step.artifact_type, artifact_payload)
+                execution = self._execute_step(run, step.name, step_context)
+                validated_payload = validate_artifact_payload(step.artifact_type, execution.artifact_payload)
                 artifact = self._save_artifact(run, step.artifact_type, validated_payload)
+
+                if step.name == "WRITER" and execution.chapter_text:
+                    self._persist_writer_output(run, validated_payload, execution.chapter_text)
+                    step_context["chapter_text"] = execution.chapter_text
+
+                step_context[step.name] = validated_payload
 
                 checkpoint = dict(run.checkpoint_json or {})
                 completed = list(checkpoint.get("completed_steps", []))
@@ -93,7 +115,9 @@ class OrchestratorService:
                 )
 
             gate_payload = self._find_gate_payload(run)
-            if gate_payload and (not gate_payload.get("pass", True) or gate_payload.get("recommended_action") == "REVIEW_MANUALLY"):
+            gate_failed = bool(gate_payload and not gate_payload.get("pass", gate_payload.get("passed", True)))
+            gate_manual = bool(gate_payload and gate_payload.get("recommended_action") == "REVIEW_MANUALLY")
+            if gate_payload and (gate_failed or gate_manual):
                 run.state = "WAITING_HUMAN_REVIEW"
                 self._emit(run, "HUMAN_REVIEW_REQUIRED", step="MEMORY_CURATOR", payload=gate_payload)
             else:
@@ -194,6 +218,243 @@ class OrchestratorService:
             raise NotFoundError("Run not found", details={"run_id": run_id})
         return run
 
+    def _execute_step(self, run: Run, step: str, ctx: dict[str, Any]) -> StepExecutionResult:
+        requirement = dict(ctx.get("requirement") or {})
+
+        if step == "PLANNER":
+            chapter_goal = str(requirement.get("chapter_goal") or "推进当前章节主线并埋下下一章悬念")
+            must_include = [str(x).strip() for x in (requirement.get("must_include") or []) if str(x).strip()]
+            must_not_include = [str(x).strip() for x in (requirement.get("must_not_include") or []) if str(x).strip()]
+            continuity = [str(x).strip() for x in (requirement.get("continuity_constraints") or []) if str(x).strip()]
+
+            beats = must_include[:3] if must_include else ["承接上一章冲突", "推进关键抉择", "收束并抛出钩子"]
+            conflict = must_not_include[0] if must_not_include else "目标推进与外部阻力升级"
+            foreshadowing = continuity[:2] if continuity else ["保留关键伏笔并延后揭示"]
+
+            return StepExecutionResult(
+                artifact_payload={
+                    "chapter_goal": chapter_goal,
+                    "conflict": conflict,
+                    "beats": beats,
+                    "foreshadowing": foreshadowing,
+                    "ending_hook": "在结尾抛出新的不确定性，驱动下一章",
+                }
+            )
+
+        if step == "WRITER":
+            outline = ctx.get("PLANNER") or self._find_artifact_payload(run, "OUTLINE") or {}
+            target_chapter = self._get_target_chapter(run)
+            now = datetime.now(timezone.utc).replace(microsecond=0)
+            created_iso = now.isoformat().replace("+00:00", "Z")
+
+            title = (target_chapter.title if target_chapter else "Generated Chapter") or "Generated Chapter"
+            chapter_goal = str(outline.get("chapter_goal") or requirement.get("chapter_goal") or "继续推进剧情")
+            beats = [str(x) for x in (outline.get("beats") or [])]
+            chapter_text = self._compose_chapter_text(title=title, chapter_goal=chapter_goal, beats=beats)
+
+            return StepExecutionResult(
+                artifact_payload={
+                    "chapter_id": target_chapter.chapter_key if target_chapter else f"run_{str(run.id)[:8]}",
+                    "kind": (target_chapter.kind if target_chapter else "NORMAL") or "NORMAL",
+                    "title": title,
+                    "subtitle": target_chapter.subtitle if target_chapter else None,
+                    "volume_id": target_chapter.volume_id if target_chapter else None,
+                    "arc_id": target_chapter.arc_id if target_chapter else None,
+                    "order_index": target_chapter.order_index if target_chapter else 1,
+                    "status": "GENERATED",
+                    "summary": chapter_text[:120],
+                    "created_at": created_iso,
+                    "updated_at": created_iso,
+                },
+                chapter_text=chapter_text,
+            )
+
+        if step == "REVIEWER":
+            chapter_text = str(ctx.get("chapter_text") or "")
+            if not chapter_text:
+                chapter_text = self._read_latest_target_chapter_text(run)
+
+            must_include = [str(x).strip() for x in (requirement.get("must_include") or []) if str(x).strip()]
+            must_not_include = [str(x).strip() for x in (requirement.get("must_not_include") or []) if str(x).strip()]
+            continuity = [str(x).strip() for x in (requirement.get("continuity_constraints") or []) if str(x).strip()]
+
+            include_hit = sum(1 for item in must_include if item and item in chapter_text)
+            include_score = 90 if not must_include else int(70 + min(30, (include_hit / max(1, len(must_include))) * 30))
+            banned_hit = [item for item in must_not_include if item and item in chapter_text]
+            consistency_penalty = min(20, len(banned_hit) * 10)
+
+            character_score = max(0, min(100, include_score - consistency_penalty))
+            world_score = max(0, min(100, include_score - (5 if not continuity else 0)))
+            style_score = max(0, min(100, 88 - (5 if len(chapter_text) < 100 else 0)))
+
+            suggestions = [
+                f"must_include 检查：命中 {include_hit}/{len(must_include)}。",
+                f"must_not_include 检查：违例 {len(banned_hit)} 项。",
+                f"continuity_constraints 检查：约束条目 {len(continuity)}，建议人工复核关键连续性。",
+            ]
+
+            return StepExecutionResult(
+                artifact_payload={
+                    "character_consistency_score": character_score,
+                    "world_consistency_score": world_score,
+                    "style_match_score": style_score,
+                    "repetition_issues": banned_hit,
+                    "revision_suggestions": suggestions,
+                }
+            )
+
+        if step == "MEMORY_CURATOR":
+            review = ctx.get("REVIEWER") or self._find_artifact_payload(run, "REVIEW") or {}
+            min_score = min(
+                int(review.get("character_consistency_score", 0)),
+                int(review.get("world_consistency_score", 0)),
+                int(review.get("style_match_score", 0)),
+            )
+            issues = [str(x) for x in (review.get("repetition_issues") or []) if str(x).strip()]
+            passed = min_score >= 80 and len(issues) <= 2
+            return StepExecutionResult(
+                artifact_payload={
+                    "pass": passed,
+                    "issues": issues,
+                    "recommended_action": "AUTO_MERGE" if passed else "REVIEW_MANUALLY",
+                }
+            )
+
+        raise ValidationError("Unsupported orchestration step", details={"step": step})
+
+    def _persist_writer_output(self, run: Run, chapter_meta: dict[str, Any], chapter_text: str) -> None:
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "scalar"):
+            return
+
+        target_chapter = self._get_target_chapter(run)
+        if target_chapter is None:
+            return
+
+        same_run_stmt = (
+            select(ChapterVersion)
+            .where(ChapterVersion.chapter_id == target_chapter.id)
+            .where(ChapterVersion.storage_key.like(f"%/runs/{run.id}/%"))
+            .where(ChapterVersion.deleted_at.is_(None))
+            .order_by(ChapterVersion.version_no.desc())
+            .limit(1)
+        )
+        same_run_version = session.scalar(same_run_stmt)
+
+        content_hash = hashlib.sha256(chapter_text.encode("utf-8")).hexdigest()
+        byte_size = len(chapter_text.encode("utf-8"))
+
+        if same_run_version is not None:
+            self.storage.put_text(same_run_version.storage_key, chapter_text)
+            same_run_version.content_sha256 = content_hash
+            same_run_version.byte_size = byte_size
+        else:
+            max_ver_stmt = select(func.max(ChapterVersion.version_no)).where(ChapterVersion.chapter_id == target_chapter.id)
+            max_ver = session.scalar(max_ver_stmt)
+            version_no = int(max_ver or 0) + 1
+            storage_key = f"projects/{run.project_id}/chapters/{target_chapter.id}/runs/{run.id}/v{version_no}.txt"
+            self.storage.put_text(storage_key, chapter_text)
+
+            version = ChapterVersion(
+                tenant_id=run.tenant_id,
+                chapter_id=target_chapter.id,
+                version_no=version_no,
+                source_type="GENERATED",
+                storage_bucket=settings.storage_bucket,
+                storage_key=storage_key,
+                content_sha256=content_hash,
+                byte_size=byte_size,
+            )
+            session.add(version)
+
+        target_chapter.status = str(chapter_meta.get("status") or "GENERATED")
+        target_chapter.summary = str(chapter_meta.get("summary") or chapter_text[:120])
+        target_chapter.title = str(chapter_meta.get("title") or target_chapter.title)
+
+    def _find_artifact_payload(self, run: Run, artifact_type: str) -> dict[str, Any] | None:
+        for row in self.artifact_repo.list_by_run(str(run.id), limit=200, offset=0):
+            if row.artifact_type == artifact_type:
+                return row.payload_json
+        return None
+
+    def _get_target_chapter(self, run: Run) -> Chapter | None:
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "get"):
+            return None
+        if not run.target_chapter_id:
+            return None
+        return session.get(Chapter, run.target_chapter_id)
+
+    def _read_latest_target_chapter_text(self, run: Run) -> str:
+        target = self._get_target_chapter(run)
+        if target is None:
+            return ""
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "scalar"):
+            return ""
+
+        stmt = (
+            select(ChapterVersion)
+            .where(ChapterVersion.chapter_id == target.id)
+            .where(ChapterVersion.deleted_at.is_(None))
+            .order_by(ChapterVersion.version_no.desc())
+            .limit(1)
+        )
+        latest = session.scalar(stmt)
+        if latest is None:
+            return ""
+        try:
+            return self.storage.get_text(latest.storage_key)
+        except Exception:
+            return ""
+
+    def _load_requirement_context(self, run: Run) -> dict[str, Any]:
+        default_ctx = {
+            "chapter_goal": "",
+            "must_include": [],
+            "must_not_include": [],
+            "tone": "",
+            "continuity_constraints": [],
+            "target_length": 0,
+            "optional_notes": "",
+        }
+        if not run.requirement_id:
+            return default_ctx
+
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "get"):
+            return default_ctx
+
+        try:
+            from plotweaver_api.db.models import Requirement
+
+            requirement = session.get(Requirement, run.requirement_id)
+            if requirement is None or requirement.deleted_at is not None:
+                return default_ctx
+            payload = dict(requirement.payload_json or {})
+            merged = dict(default_ctx)
+            merged.update(payload)
+            if not merged.get("chapter_goal"):
+                merged["chapter_goal"] = requirement.chapter_goal or ""
+            return merged
+        except Exception:
+            return default_ctx
+
+    @staticmethod
+    def _compose_chapter_text(title: str, chapter_goal: str, beats: list[str]) -> str:
+        beat_lines = beats or ["承接冲突", "推进情节", "留下悬念"]
+        body_parts = [
+            f"{title}",
+            "",
+            f"本章目标：{chapter_goal}",
+            "",
+        ]
+        for idx, beat in enumerate(beat_lines, start=1):
+            body_parts.append(f"第{idx}段：{beat}。角色在压力下作出选择，推动情节向前。")
+        body_parts.append("")
+        body_parts.append("结尾：一个新的变量出现，迫使主角在下一章重新评估局势。")
+        return "\n".join(body_parts).strip()
+
     def _save_artifact(self, run: Run, artifact_type: str, payload: dict[str, Any]) -> RunArtifact:
         existing = None
         for row in self.artifact_repo.list_by_run(str(run.id), limit=200, offset=0):
@@ -203,7 +464,7 @@ class OrchestratorService:
 
         if existing is not None:
             existing.payload_json = payload
-            existing.payload_hash = build_payload_hash(payload)
+            existing.payload_hash = self._hash_payload(payload)
             self.artifact_repo.session.flush()
             self.artifact_repo.session.refresh(existing)
             return existing
@@ -214,58 +475,33 @@ class OrchestratorService:
             artifact_type=artifact_type,
             version_no=1,
             payload_json=payload,
-            payload_hash=build_payload_hash(payload),
+            payload_hash=self._hash_payload(payload),
         )
         return self.artifact_repo.add(artifact)
 
+    @staticmethod
+    def _hash_payload(payload: dict[str, Any]) -> str:
+        import json
+
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
     def _emit(self, run: Run, event_type: str, step: str | None = None, payload: dict[str, Any] | None = None) -> None:
+        event_payload = {
+            "step": step,
+            "artifact_type": None,
+            "artifact_id": None,
+            "error": None,
+        }
+        if payload:
+            event_payload.update(payload)
         evt = RunEvent(
             tenant_id=run.tenant_id,
             run_id=run.id,
             event_type=event_type,
             step=step,
-            payload_json=payload,
+            payload_json=event_payload,
         )
         self.event_repo.add(evt)
-
-    @staticmethod
-    def _build_step_payload(run: Run, step: str) -> dict[str, Any]:
-        if step == "PLANNER":
-            return {
-                "chapter_goal": "Auto-generated planner goal",
-                "conflict": "Auto-generated conflict",
-                "beats": ["beat-1", "beat-2"],
-                "foreshadowing": ["hint-1"],
-                "ending_hook": "cliffhanger",
-            }
-        if step == "WRITER":
-            return {
-                "chapter_id": f"run_{str(run.id)[:8]}",
-                "kind": "NORMAL",
-                "title": "Generated Chapter",
-                "order_index": 1,
-                "status": "GENERATED",
-                "summary": "Generated by orchestrator",
-            }
-        if step == "REVIEWER":
-            return {
-                "character_consistency_score": 90,
-                "world_consistency_score": 90,
-                "style_match_score": 90,
-                "repetition_issues": [],
-                "revision_suggestions": [
-                    "硬约束检查：must_include 已覆盖。",
-                    "硬约束检查：must_not_include 未触发。",
-                    "硬约束检查：continuity_constraints 无违例。",
-                ],
-            }
-        if step == "MEMORY_CURATOR":
-            return {
-                "pass": True,
-                "issues": [],
-                "recommended_action": "AUTO_MERGE",
-            }
-        raise ValidationError("Unsupported orchestration step", details={"step": step})
 
     def _find_gate_payload(self, run: Run) -> dict[str, Any] | None:
         for row in self.artifact_repo.list_by_run(str(run.id), limit=200, offset=0):

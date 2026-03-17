@@ -147,6 +147,11 @@ export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelP
     [events]
   );
   const terminal = useMemo(() => DONE_STATES.has(run.state) || FAILED_STATES.has(run.state), [run.state]);
+  const runUiStatus = useMemo(() => {
+    if (run.state === "WAITING_HUMAN_REVIEW") return "需人工复核";
+    if (DONE_STATES.has(run.state)) return "已完成";
+    return "执行中";
+  }, [run.state]);
 
   const onExecute = () => {
     startTransition(async () => {
@@ -165,6 +170,7 @@ export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelP
         <h3>Run State</h3>
         <div className="step-row">
           <span className="pill">{run.state}</span>
+          <span className="muted">{runUiStatus}</span>
           <span className="muted">attempt {run.attempt_count}</span>
           <span className="muted">retry {run.retry_count}</span>
         </div>

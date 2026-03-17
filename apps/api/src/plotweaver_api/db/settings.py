@@ -11,6 +11,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/plotweaver"
     default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    storage_local_root: str = "./.local_storage"
+    storage_bucket: str = "local-filesystem"
 
     model_config = SettingsConfigDict(
         env_file=".env",

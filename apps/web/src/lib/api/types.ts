@@ -22,6 +22,17 @@ export type Chapter = {
   updated_at: string;
 };
 
+export type ChapterLatestContent = {
+  chapter_id: string;
+  version_no: number;
+  storage_bucket: string;
+  storage_key: string;
+  content_sha256: string;
+  byte_size: number;
+  content: string;
+  created_at: string;
+};
+
 export type Requirement = {
   id: string;
   project_id: string;

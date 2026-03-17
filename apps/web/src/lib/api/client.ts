@@ -1,5 +1,5 @@
 import { getApiBaseUrl, getTenantId, parseJsonOrThrow } from "@/lib/api/shared";
-import type { Artifact, Requirement, Run, RunEvent } from "@/lib/api/types";
+import type { Artifact, ChapterLatestContent, Project, Requirement, Run, RunEvent } from "@/lib/api/types";
 
 function makeHeaders(): HeadersInit {
   return {
@@ -27,6 +27,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const clientApi = {
+  createProject: (payload: { title: string; description?: string }) => post<Project>("/projects", payload),
   createRequirement: (projectId: string, payload: Record<string, unknown>) =>
     post<Requirement>(`/projects/${projectId}/requirements`, payload),
   createRun: (payload: {
@@ -42,6 +43,8 @@ export const clientApi = {
       `/runs/${runId}/events?limit=200${afterCursor ? `&after_cursor=${encodeURIComponent(afterCursor)}` : ""}`
     ),
   listArtifacts: (runId: string) => get<Artifact[]>(`/runs/${runId}/artifacts?limit=100`),
+  getLatestChapterContent: (projectId: string, chapterId: string) =>
+    get<ChapterLatestContent>(`/projects/${projectId}/chapters/${chapterId}/latest-content`),
   executeRun: (runId: string) => post<Run>(`/runs/${runId}/execute`, {}),
   humanReviewDecision: (runId: string, decision: "APPROVE" | "REQUEST_REWRITE" | "REJECT", reason?: string) =>
     post<Run>(`/runs/${runId}/review-decision`, { decision, reason })

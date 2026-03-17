@@ -12,3 +12,4 @@
 6. [告警与值班](./06-alerting-and-oncall.md)
 7. [成本监控](./07-cost-monitoring.md)
 8. [发布检查清单](./08-release-checklist.md)
+9. [本地闭环运行手册（Phase 1）](./09-local-closed-loop.md)

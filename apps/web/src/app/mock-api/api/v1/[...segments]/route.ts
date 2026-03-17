@@ -1,11 +1,72 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 type JsonRecord = Record<string, unknown>;
+
+type MockProject = {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string;
+  language: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type MockChapter = {
+  id: string;
+  project_id: string;
+  chapter_key: string;
+  kind: string;
+  title: string;
+  order_index: number;
+  status: string;
+  summary: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export const dynamic = "force-dynamic";
 
 const nowIso = "2026-03-16T00:00:00Z";
 let runState = "QUEUED";
+let projectCounter = 2;
+
+const projects = new Map<string, MockProject>([
+  [
+    "proj-1",
+    {
+      id: "proj-1",
+      tenant_id: "00000000-0000-0000-0000-000000000001",
+      title: "Demo Project",
+      description: "Mock data for e2e key path",
+      language: "zh-CN",
+      status: "ACTIVE",
+      created_at: nowIso,
+      updated_at: nowIso
+    }
+  ]
+]);
+
+const chapters = new Map<string, MockChapter[]>([
+  [
+    "proj-1",
+    [
+      {
+        id: "chap-1",
+        project_id: "proj-1",
+        chapter_key: "chapter_1",
+        kind: "NORMAL",
+        title: "Chapter One",
+        order_index: 1,
+        status: "GENERATED",
+        summary: "A generated opening chapter.",
+        created_at: nowIso,
+        updated_at: nowIso
+      }
+    ]
+  ]
+]);
 
 function json(data: JsonRecord | JsonRecord[], status = 200): NextResponse {
   return NextResponse.json(data, { status });
@@ -38,7 +99,7 @@ function makeEvents() {
     {
       id: "evt-1",
       run_id: "run-1",
-      event_type: "RUN_STARTED",
+      event_type: "RUN_EXECUTION_STARTED",
       step: "PLANNER",
       payload_json: { attempt: 1 },
       created_at: nowIso,
@@ -95,15 +156,6 @@ function makeArtifacts() {
       created_at: nowIso
     },
     {
-      id: "art-3",
-      run_id: "run-1",
-      artifact_type: "CHARACTERS",
-      version_no: 1,
-      payload_json: { contract_version: "1.0.0", characters: [] },
-      payload_hash: "x",
-      created_at: nowIso
-    },
-    {
       id: "art-4",
       run_id: "run-1",
       artifact_type: "CHAPTER_META",
@@ -146,48 +198,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const route = routeOf(segments);
 
   if (route === "/projects") {
-    return json([
-      {
-        id: "proj-1",
-        tenant_id: "00000000-0000-0000-0000-000000000001",
-        title: "Demo Project",
-        description: "Mock data for e2e key path",
-        language: "zh-CN",
-        status: "ACTIVE",
-        created_at: nowIso,
-        updated_at: nowIso
-      }
-    ]);
+    return json(Array.from(projects.values()));
   }
 
-  if (route === "/projects/proj-1") {
+  if (segments.length === 2 && segments[0] === "projects") {
+    const project = projects.get(segments[1]);
+    if (!project) return json({ code: "NOT_FOUND", message: `Unknown project ${segments[1]}` }, 404);
+    return json(project);
+  }
+
+  if (segments.length === 3 && segments[0] === "projects" && segments[2] === "chapters") {
+    return json(chapters.get(segments[1]) ?? []);
+  }
+
+  if (
+    segments.length === 5 &&
+    segments[0] === "projects" &&
+    segments[2] === "chapters" &&
+    segments[4] === "latest-content"
+  ) {
+    const chapterId = segments[3];
     return json({
-      id: "proj-1",
-      tenant_id: "00000000-0000-0000-0000-000000000001",
-      title: "Demo Project",
-      description: "Mock data for e2e key path",
-      language: "zh-CN",
-      status: "ACTIVE",
-      created_at: nowIso,
-      updated_at: nowIso
+      chapter_id: chapterId,
+      version_no: 1,
+      storage_bucket: "mock-local",
+      storage_key: `projects/${segments[1]}/chapters/${chapterId}/v1.txt`,
+      content_sha256: "mock-sha256",
+      byte_size: 58,
+      content: "这是 mock 正文输出。主角在压力中做出关键抉择，故事继续推进。",
+      created_at: nowIso
     });
-  }
-
-  if (route === "/projects/proj-1/chapters") {
-    return json([
-      {
-        id: "chap-1",
-        project_id: "proj-1",
-        chapter_key: "chapter_1",
-        kind: "NORMAL",
-        title: "Chapter One",
-        order_index: 1,
-        status: "GENERATED",
-        summary: "A generated opening chapter.",
-        created_at: nowIso,
-        updated_at: nowIso
-      }
-    ]);
   }
 
   if (route === "/runs/run-1") {
@@ -232,11 +272,41 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const route = routeOf(segments);
   const body = (await request.json().catch(() => ({}))) as JsonRecord;
 
-  if (route === "/projects/proj-1/requirements") {
+  if (route === "/projects") {
+    const id = `proj-${projectCounter++}`;
+    const created: MockProject = {
+      id,
+      tenant_id: "00000000-0000-0000-0000-000000000001",
+      title: String(body.title ?? "Untitled Project"),
+      description: String(body.description ?? ""),
+      language: "zh-CN",
+      status: "ACTIVE",
+      created_at: nowIso,
+      updated_at: nowIso
+    };
+    projects.set(id, created);
+    chapters.set(id, [
+      {
+        id: `${id}-chap-1`,
+        project_id: id,
+        chapter_key: "chapter_1",
+        kind: "NORMAL",
+        title: "Chapter One",
+        order_index: 1,
+        status: "GENERATED",
+        summary: "Auto-created first chapter",
+        created_at: nowIso,
+        updated_at: nowIso
+      }
+    ]);
+    return json(created, 201);
+  }
+
+  if (segments.length === 3 && segments[0] === "projects" && segments[2] === "requirements") {
     return json(
       {
         id: "req-1",
-        project_id: "proj-1",
+        project_id: segments[1],
         chapter_goal: String(body.chapter_goal ?? ""),
         payload_json: body.payload_json ?? {},
         payload_hash: "req-hash",

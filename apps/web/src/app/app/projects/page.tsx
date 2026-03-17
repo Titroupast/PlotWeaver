@@ -1,5 +1,6 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 
+import { CreateProjectForm } from "@/components/create-project-form";
 import { serverApi } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +11,18 @@ export default async function ProjectsPage() {
   return (
     <div className="container">
       <section className="card stack">
-        <h1>Projects</h1>
+        <h1>Projects 项目</h1>
         <p className="muted">管理小说项目并进入章节续写流程。</p>
       </section>
+
+      <section className="card stack">
+        <h3>Create Project 创建项目</h3>
+        <CreateProjectForm />
+      </section>
+
       <section className="grid">
         {projects.length === 0 ? (
-          <article className="card">No project found. Use API to create one first.</article>
+          <article className="card">No project found. Create one above to get started.</article>
         ) : (
           projects.map((project) => (
             <article className="card stack" key={project.id}>

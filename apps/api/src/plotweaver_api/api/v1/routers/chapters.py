@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from plotweaver_api.dependencies.auth import get_user_id
 from plotweaver_api.dependencies.db import get_tenant_id
 from plotweaver_api.dependencies.services import get_chapter_service
-from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterResponse
+from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterLatestContentResponse, ChapterResponse
 from plotweaver_api.services.chapter_service import ChapterService
 
 router = APIRouter(prefix="/projects/{project_id}/chapters", tags=["chapters"])
@@ -30,3 +30,12 @@ def create_chapter(
     service: ChapterService = Depends(get_chapter_service),
 ) -> ChapterResponse:
     return service.create(tenant_id=tenant_id, project_id=project_id, payload=payload, user_id=user_id)
+
+
+@router.get("/{chapter_id}/latest-content", response_model=ChapterLatestContentResponse)
+def get_latest_chapter_content(
+    project_id: str,
+    chapter_id: str,
+    service: ChapterService = Depends(get_chapter_service),
+) -> ChapterLatestContentResponse:
+    return service.get_latest_content(project_id=project_id, chapter_id=chapter_id)

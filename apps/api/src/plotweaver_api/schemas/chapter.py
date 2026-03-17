@@ -28,3 +28,14 @@ class ChapterResponse(BaseModel):
     summary: str
     created_at: datetime
     updated_at: datetime
+
+
+class ChapterLatestContentResponse(BaseModel):
+    chapter_id: str
+    version_no: int
+    storage_bucket: str
+    storage_key: str
+    content_sha256: str
+    byte_size: int
+    content: str
+    created_at: datetime

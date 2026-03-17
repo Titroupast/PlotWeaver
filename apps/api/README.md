@@ -66,7 +66,13 @@ python -m pytest -q
 - `/api/v1/health/*`
 - `/api/v1/projects/*`
 - `/api/v1/projects/{project_id}/chapters`
+- `/api/v1/projects/{project_id}/chapters/{chapter_id}/latest-content`
 - `/api/v1/projects/{project_id}/requirements`
 - `/api/v1/runs/*`
 - `/api/v1/runs/{run_id}/artifacts`
 - `/api/v1/memory/projects/{project_id}/*`
+
+### 正文存储说明（Phase 1）
+
+- Writer 生成正文后，文本写入本地 Storage（默认目录 `apps/api/.local_storage`，可通过 `storage_local_root` 调整）。
+- `chapter_versions` 保存正文版本元信息（`storage_bucket/storage_key/content_sha256/byte_size/source_run_id` 语义）。

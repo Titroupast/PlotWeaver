@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useTransition } from "react";
 
@@ -34,7 +34,7 @@ export function ReviewDecisionPanel({ runId, runState }: ReviewDecisionPanelProp
 
   return (
     <section className="card stack">
-      <h3>Human Review Decision</h3>
+      <h3>Human Review Decision 人工复核决策</h3>
       <p className="muted">当前状态：{effectiveState}</p>
       {!visible ? (
         <p className="muted">当前 run 不需要人工复核。</p>

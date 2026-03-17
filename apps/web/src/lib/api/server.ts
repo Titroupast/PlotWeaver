@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getApiBaseUrl, getTenantId, parseJsonOrThrow } from "@/lib/api/shared";
-import type { Artifact, Chapter, Project, Requirement, Run, RunEvent } from "@/lib/api/types";
+import type { Artifact, Chapter, ChapterLatestContent, Project, Requirement, Run, RunEvent } from "@/lib/api/types";
 
 function makeHeaders(): HeadersInit {
   return {
@@ -34,8 +34,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 export const serverApi = {
   listProjects: () => get<Project[]>("/projects"),
+  createProject: (payload: { title: string; description?: string }) => post<Project>("/projects", payload),
   getProject: (projectId: string) => get<Project>(`/projects/${projectId}`),
   listChapters: (projectId: string) => get<Chapter[]>(`/projects/${projectId}/chapters`),
+  getLatestChapterContent: (projectId: string, chapterId: string) =>
+    get<ChapterLatestContent>(`/projects/${projectId}/chapters/${chapterId}/latest-content`),
   createRequirement: (projectId: string, payload: Record<string, unknown>) =>
     post<Requirement>(`/projects/${projectId}/requirements`, payload),
   createRun: (payload: {

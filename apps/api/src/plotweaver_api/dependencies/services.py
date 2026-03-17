@@ -4,7 +4,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from plotweaver_api.dependencies.db import get_db_session
-from plotweaver_api.dependencies.runtime import get_task_runner
+from plotweaver_api.dependencies.runtime import get_storage_client, get_task_runner
 from plotweaver_api.repositories.artifact_repo import ArtifactRepository
 from plotweaver_api.repositories.chapter_repo import ChapterRepository
 from plotweaver_api.repositories.character_repo import CharacterRepository
@@ -22,6 +22,7 @@ from plotweaver_api.services.orchestrator_service import OrchestratorService
 from plotweaver_api.services.project_service import ProjectService
 from plotweaver_api.services.requirement_service import RequirementService
 from plotweaver_api.services.run_service import RunService
+from plotweaver_api.storage.interface import StorageClient
 from plotweaver_api.tasks.interface import TaskRunner
 
 
@@ -33,8 +34,11 @@ def get_project_service(session: Session = Depends(get_db_session)) -> ProjectSe
     return ProjectService(ProjectRepository(session))
 
 
-def get_chapter_service(session: Session = Depends(get_db_session)) -> ChapterService:
-    return ChapterService(ChapterRepository(session))
+def get_chapter_service(
+    session: Session = Depends(get_db_session),
+    storage_client: StorageClient = Depends(get_storage_client),
+) -> ChapterService:
+    return ChapterService(ChapterRepository(session), storage=storage_client)
 
 
 def get_requirement_service(session: Session = Depends(get_db_session)) -> RequirementService:
@@ -63,10 +67,12 @@ def get_memory_service(session: Session = Depends(get_db_session)) -> MemoryServ
 def get_orchestrator_service(
     session: Session = Depends(get_db_session),
     task_runner: TaskRunner = Depends(get_task_runner),
+    storage_client: StorageClient = Depends(get_storage_client),
 ) -> OrchestratorService:
     return OrchestratorService(
         run_repo=RunRepository(session),
         artifact_repo=ArtifactRepository(session),
         event_repo=RunEventRepository(session),
         task_runner=task_runner,
+        storage=storage_client,
     )
