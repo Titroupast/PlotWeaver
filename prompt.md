@@ -120,3 +120,65 @@
 - 不先做“全自动人物合并”，保留人工确认入口（与你 AGENTS.md 约束一致）
 
 如果你愿意，我下一步可以直接给你一份 `PHASE1 -> PHASE2` 的“周计划版任务板”（每周目标、输入、输出、验收标准、风险）。
+
+
+
+
+
+
+
+
+
+**Phase 1 最终验收清单（可打勾）**
+
+1. 契约层（Contract）
+- [ ] `outline/review/characters/chapter_meta/memory_gate` 均有冻结 schema 与版本策略  
+- [ ] 读旧写新适配规则可用（旧 Day6 产物可被解析）  
+- [ ] 契约测试门禁稳定通过（本地+CI）
+
+2. 引擎层（Engine）
+- [ ] Planner/Writer/Reviewer/Memory Curator 有清晰服务边界  
+- [ ] API 调用引擎不依赖 Day6 脚本细节  
+- [ ] Day6 CLI 仍可运行（作为回归基线）
+
+3. 数据层（DB + Storage）
+- [ ] Postgres 核心模型与 Alembic 迁移完成并可重放  
+- [ ] RLS 多租户策略生效  
+- [ ] `runs/artifacts/chapter_versions` 链路可追溯  
+- [ ] 正文/长日志进入对象存储，DB 仅存引用与元数据
+
+4. 后端 API
+- [ ] 关键接口闭环：project/chapter/requirement/run/events/artifacts  
+- [ ] Run 状态机可推进、可失败、可重试、可人工复核  
+- [ ] SSE 事件流可重连/可续传（cursor）  
+- [ ] 错误模型统一（404/409/422/500 + trace_id）
+
+5. 前端 Web
+- [ ] 四大流程可用：项目管理、续写配置、生成过程、结果审阅  
+- [ ] 运行页支持实时进度（SSE）并有降级策略  
+- [ ] 审阅页支持人工决策入口（approve/reject/rewrite）  
+- [ ] 移动端基线与错误/加载体验可接受
+
+6. 测试与门禁（Task G）
+- [ ] Contract gate（优先阻断）  
+- [ ] API integration gate（关键路径+错误路径）  
+- [ ] 最小 E2E gate（关键回归路径）  
+- [ ] PR/main 工作流与阻断规则生效
+
+7. 部署与运行（Task H）
+- [ ] 部署蓝图明确：Vercel(Web) + FastAPI(Container) + Supabase/Postgres  
+- [ ] 环境分层：dev/staging/prod  
+- [ ] 环境变量/密钥规范与轮换流程  
+- [ ] 回滚流程、成本监控、值班告警  
+- [ ] 运行手册目录完整并可执行
+
+8. Phase 1 出口（Exit）
+- [ ] 有一份“Phase 1 完成报告”：已完成项、遗留项、风险  
+- [ ] 至少 1 次从 Web 发起到产物审阅的端到端演示可复现  
+- [ ] 明确 Phase 2 backlog（不把未完成内容混进 Phase 1）
+
+**你当前状态判断**  
+- 1/3/4/5/6 已接近完成。  
+- 主要还差：`2（engine 抽离收口）`、`7（Task H）`、`8（正式 Exit 报告）`。  
+
+如果这三块补齐，基本就可以正式宣告 Phase 1 完成。
