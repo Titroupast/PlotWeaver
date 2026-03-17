@@ -17,7 +17,17 @@ class RequirementService:
         payload: RequirementCreateRequest,
         user_id: str | None = None,
     ) -> RequirementResponse:
-        validated_payload = validate_requirement_payload(payload.payload_json)
+        # Backward-compatible defaults so older/web clients can omit optional contract keys.
+        normalized_payload = dict(payload.payload_json)
+        normalized_payload.setdefault("chapter_goal", payload.chapter_goal)
+        normalized_payload.setdefault("must_include", [])
+        normalized_payload.setdefault("must_not_include", [])
+        normalized_payload.setdefault("tone", "")
+        normalized_payload.setdefault("continuity_constraints", [])
+        normalized_payload.setdefault("target_length", 0)
+        normalized_payload.setdefault("optional_notes", "")
+
+        validated_payload = validate_requirement_payload(normalized_payload)
         payload_hash = payload.payload_hash or build_payload_hash(validated_payload)
 
         req = Requirement(

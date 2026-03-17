@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from plotweaver_api.api.v1 import api_router
 from plotweaver_api.core.config import settings
@@ -12,6 +13,11 @@ from plotweaver_api.core.logging import setup_logging
 
 def create_app() -> FastAPI:
     setup_logging()
+    # Local development defaults; can be tightened per environment later.
+    cors_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     app = FastAPI(
         title=settings.app_name,
@@ -26,6 +32,13 @@ def create_app() -> FastAPI:
             {"name": "artifacts", "description": "Structured artifacts for runs"},
             {"name": "memory", "description": "Memory and merge decisions"},
         ],
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.middleware("http")
