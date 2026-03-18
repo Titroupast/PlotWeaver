@@ -1,5 +1,6 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 
 export function NavShell({ children }: { children: ReactNode }) {
   return (
@@ -11,15 +12,17 @@ export function NavShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="step-row">
             <Link href="/app/projects" className="muted">
-              Projects
+              项目
             </Link>
             <Link href="/app/settings" className="muted">
-              Settings
+              设置
             </Link>
           </div>
         </div>
       </header>
-      <main>{children}</main>
+      <Suspense fallback={<main className="container"><section className="card">页面加载中...</section></main>}>
+        <main>{children}</main>
+      </Suspense>
     </div>
   );
 }

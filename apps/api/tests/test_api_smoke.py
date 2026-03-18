@@ -19,6 +19,7 @@ from plotweaver_api.schemas.memory import (
     MemoryDeltaDecisionResponse,
     MemoryDeltaResponse,
     MemoryHistoryItem,
+    MemoryRebuildResponse,
     MemorySnapshotItem,
     MemorySnapshotResponse,
     MergeDecisionResponse,
@@ -143,6 +144,17 @@ class _FakeMemoryService:
             ),
         )
 
+    def rebuild_project_summary(self, project_id: str, user_id: str | None = None):
+        _ = user_id
+        return MemoryRebuildResponse(
+            project_id=project_id,
+            updated_types=["CHARACTERS", "WORLD_RULES", "STORY_SO_FAR"],
+            versions={"CHARACTERS": 3, "WORLD_RULES": 2, "STORY_SO_FAR": 4},
+            sources={"CHARACTERS": "LLM", "WORLD_RULES": "LLM", "STORY_SO_FAR": "FALLBACK"},
+            reasons={"STORY_SO_FAR": "EMPTY_STORY_MILESTONES"},
+            chapter_count=12,
+        )
+
 
 @pytest.fixture
 def client() -> TestClient:
@@ -204,3 +216,12 @@ def test_memory_decision_endpoint(client: TestClient) -> None:
     body = resp.json()
     assert body["delta"]["gate_status"] == "MERGED"
     assert body["merge_decision"]["decision_type"] == "MERGE"
+
+
+def test_memory_rebuild_endpoint(client: TestClient) -> None:
+    resp = client.post("/api/v1/memory/projects/p1/rebuild", headers={"x-user-id": "user-1"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["project_id"] == "p1"
+    assert body["chapter_count"] == 12
+    assert "CHARACTERS" in body["updated_types"]
