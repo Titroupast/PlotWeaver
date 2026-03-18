@@ -31,8 +31,11 @@ def get_health_service(session: Session = Depends(get_db_session)) -> HealthServ
     return HealthService(session)
 
 
-def get_project_service(session: Session = Depends(get_db_session)) -> ProjectService:
-    return ProjectService(ProjectRepository(session))
+def get_project_service(
+    session: Session = Depends(get_db_session),
+    storage_client: StorageClient = Depends(get_storage_client),
+) -> ProjectService:
+    return ProjectService(ProjectRepository(session), storage=storage_client)
 
 
 def get_chapter_service(
@@ -57,12 +60,16 @@ def get_artifact_service(session: Session = Depends(get_db_session)) -> Artifact
     return ArtifactService(ArtifactRepository(session))
 
 
-def get_memory_service(session: Session = Depends(get_db_session)) -> MemoryService:
+def get_memory_service(
+    session: Session = Depends(get_db_session),
+    storage_client: StorageClient = Depends(get_storage_client),
+) -> MemoryService:
     return MemoryService(
         character_repo=CharacterRepository(session),
         memory_repo=MemoryRepository(session),
         delta_repo=MemoryDeltaRepository(session),
         decision_repo=MergeDecisionRepository(session),
+        storage=storage_client,
     )
 
 

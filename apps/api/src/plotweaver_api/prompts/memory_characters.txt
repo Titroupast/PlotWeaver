@@ -1,0 +1,43 @@
+﻿你是小说设定整理助手。
+请根据输入的所有章节正文，提取并整理角色设定，输出**严格 JSON**（仅 JSON，不要任何解释文字）。
+
+输入章节正文：
+{all_chapters_text}
+
+输出格式必须与下面结构一致（字段可为空但必须存在）：
+```json
+{
+  "characters": [
+    {
+      "character_id": null,
+      "canonical_name": "",
+      "display_name": "",
+      "aliases": [],
+      "tags": [],
+      "role": "",
+      "age": 0,
+      "personality": [],
+      "background": [],
+      "abilities": [],
+      "limitations": [],
+      "motivation": [],
+      "key_memories": [],
+      "story_function": [],
+      "beliefs": [],
+      "current_status": "",
+      "relationships": [],
+      "identities": [],
+      "ambiguity": [],
+      "merge_status": "CONFIRMED"
+    }
+  ]
+}
+```
+
+要求：
+1. 只输出 JSON，不要多余文本。
+2. 必须输出：`canonical_name`、`aliases`、`merge_status`。
+3. `character_id` 若无法确定请输出 `null`（后续由系统生成稳定 id 或进入人工确认流程）。
+4. 角色按重要性排序；每个角色至少补充：`role`、`key_memories`（>=1）或 `relationships`（>=1）中的任意两类信息。
+5. 禁止把叙述短语（如“我不知”“低声”“有人”）当作角色名。
+6. 内容用中文。

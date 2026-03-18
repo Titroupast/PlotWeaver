@@ -72,3 +72,12 @@ class MemoryDeltaDecisionRequest(BaseModel):
 class MemoryDeltaDecisionResponse(BaseModel):
     delta: MemoryDeltaResponse
     merge_decision: MergeDecisionResponse | None
+
+
+class MemoryRebuildResponse(BaseModel):
+    project_id: str
+    updated_types: list[str]
+    versions: dict[str, int]
+    sources: dict[str, str]
+    reasons: dict[str, str]
+    chapter_count: int

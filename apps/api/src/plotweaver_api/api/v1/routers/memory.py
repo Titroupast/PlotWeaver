@@ -10,6 +10,7 @@ from plotweaver_api.schemas.memory import (
     MemoryDeltaDecisionResponse,
     MemoryDeltaResponse,
     MemoryHistoryItem,
+    MemoryRebuildResponse,
     MemorySnapshotResponse,
     MergeDecisionResponse,
 )
@@ -66,6 +67,15 @@ def list_memory_history(
     service: MemoryService = Depends(get_memory_service),
 ) -> list[MemoryHistoryItem]:
     return service.list_history(project_id=project_id, limit=limit, offset=offset)
+
+
+@router.post("/projects/{project_id}/rebuild", response_model=MemoryRebuildResponse)
+def rebuild_memory_summary(
+    project_id: str,
+    user_id: str | None = Depends(get_user_id),
+    service: MemoryService = Depends(get_memory_service),
+) -> MemoryRebuildResponse:
+    return service.rebuild_project_summary(project_id=project_id, user_id=user_id)
 
 
 @router.get("/projects/{project_id}/merge-decisions", response_model=list[MergeDecisionResponse])

@@ -1,14 +1,28 @@
-﻿[上一章正文]
+﻿[任务]
+你需要把 OUTLINE 扩写成可发布的中文小说正文，并输出 chapter_meta + chapter_text。
+
+[上一章正文]
 {previous_chapter}
 
 [章节提纲 OUTLINE JSON]
 {outline_json}
 
-[补充记忆上下文]
+[记忆上下文]
 {memory_context}
 
 [续写需求 JSON]
 {requirement_json}
 
-[章节元信息提示]
+[目标章节提示 JSON]
 {chapter_hint_json}
+
+[硬性规则]
+- 目标是“下一章”，必须与 chapter_hint_json.order_index 对齐，不得复写上一章标题。
+- chapter_text 必须是连续叙事正文，不得输出提纲体。
+- chapter_text 字数不少于 1800 字；若 requirement.target_length.min 更高，则按更高值执行。
+- 必须落实 must_include，严格避免 must_not_include。
+- 必须满足 continuity_constraints。
+- 结尾必须有可执行 hook，引出下一章。
+
+[输出]
+- 只输出 JSON 对象：{ chapter_meta: {...}, chapter_text: "..." }

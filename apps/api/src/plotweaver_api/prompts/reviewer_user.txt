@@ -1,4 +1,7 @@
-﻿[本章正文]
+﻿[任务]
+请评审本章正文与元信息，返回结构化 review.json。
+
+[本章正文]
 {chapter_text}
 
 [人物设定摘要]
@@ -12,3 +15,15 @@
 
 [章节元信息 JSON]
 {chapter_meta_json}
+
+[评审要求]
+- 必须给出 0-100 分：character_consistency_score/world_consistency_score/style_match_score。
+- repetition_issues 只列真实重复或冲突点。
+- revision_suggestions 必须显式包含三段检查结论：
+  1) must_include 是否满足
+  2) must_not_include 是否违例
+  3) continuity_constraints 是否满足
+- 每条建议要可执行，避免空话。
+
+[输出]
+- 只输出 JSON 对象。

@@ -19,5 +19,9 @@ def load_prompt(name: str) -> str:
 
 def render_prompt(template_name: str, **kwargs: object) -> str:
     template = load_prompt(template_name)
+    # Only replace explicit {key} placeholders; keep all other braces (e.g. JSON examples) untouched.
+    rendered = template
     values = _SafeDict({k: "" if v is None else str(v) for k, v in kwargs.items()})
-    return template.format_map(values)
+    for key, value in values.items():
+        rendered = rendered.replace(f"{{{key}}}", value)
+    return rendered

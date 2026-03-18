@@ -1,11 +1,21 @@
-﻿[上一章正文]
+﻿[任务]
+你需要基于“上一章正文 + 续写需求 + 记忆上下文 + 风格约束”生成下一章结构化提纲（OUTLINE）。
+
+[上一章正文]
 {previous_chapter}
 
 [续写需求 JSON]
 {requirement_json}
 
-[补充记忆上下文]
+[记忆上下文]
 {memory_context}
 
 [风格约束（可选）]
 {style_constraints}
+
+[输出要求]
+- 只输出 JSON 对象。
+- 字段必须完整：chapter_goal/conflict/beats/foreshadowing/ending_hook。
+- beats 必须 3-6 条，且有明确时间推进。
+- 必须体现 must_include/must_not_include/continuity_constraints。
+- 结尾必须留可执行的下一章钩子，不能空泛。

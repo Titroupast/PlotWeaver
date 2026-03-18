@@ -1,4 +1,7 @@
-﻿[本章正文]
+﻿[任务]
+根据本章正文 + 主记忆 + review 结果，判断是否可自动合并记忆。
+
+[本章正文]
 {chapter_text}
 
 [主记忆（人物/世界/前情）]
@@ -6,3 +9,12 @@
 
 [评审结果 JSON]
 {review_json}
+
+[判定规则]
+- 若存在明显设定冲突、人物身份冲突、时间线冲突，则 pass=false，recommended_action=REVIEW_MANUALLY。
+- 若信息增量明确且无冲突，则 pass=true，recommended_action=AUTO_MERGE。
+- issues 列出具体冲突点，不能为空泛描述。
+
+[输出]
+- 只输出 JSON 对象：{ pass, issues, recommended_action }
+- recommended_action 仅允许 AUTO_MERGE 或 REVIEW_MANUALLY。
