@@ -33,6 +33,18 @@ export type ChapterLatestContent = {
   created_at: string;
 };
 
+export type ChapterVersion = {
+  chapter_id: string;
+  version_no: number;
+  run_id: string | null;
+  version_title: string | null;
+  storage_bucket: string;
+  storage_key: string;
+  content_sha256: string;
+  byte_size: number;
+  created_at: string;
+};
+
 export type Requirement = {
   id: string;
   project_id: string;
@@ -125,3 +137,18 @@ export type MemoryHistoryItem = {
   created_at: string;
   updated_at: string;
 };
+
+export type MemoryRebuildResponse = {
+  project_id: string;
+  updated_types: string[];
+  versions: Record<string, number>;
+  sources: Record<string, string>;
+  reasons: Record<string, string>;
+  chapter_count: number;
+};
+
+export type ProjectImportResponse = {
+  project: Project;
+  chapter_count: number;
+};
+

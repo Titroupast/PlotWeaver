@@ -10,6 +10,8 @@ import { mapApiErrorMessage } from "@/lib/api/error-message";
 type ConfigureRunFormProps = {
   projectId: string;
   chapterId: string;
+  baseChapterId?: string;
+  targetChapterId?: string;
 };
 
 type FormValues = {
@@ -19,7 +21,7 @@ type FormValues = {
   continuityConstraints: string;
 };
 
-export function ConfigureRunForm({ projectId, chapterId }: ConfigureRunFormProps) {
+export function ConfigureRunForm({ projectId, chapterId, baseChapterId, targetChapterId }: ConfigureRunFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -58,12 +60,13 @@ export function ConfigureRunForm({ projectId, chapterId }: ConfigureRunFormProps
 
         const run = await clientApi.createRun({
           project_id: projectId,
-          target_chapter_id: chapterId,
+          base_chapter_id: baseChapterId ?? chapterId,
+          target_chapter_id: targetChapterId,
           requirement_id: requirement.id,
-          idempotency_key: `${projectId}-${chapterId}-${Date.now()}`
+          idempotency_key: `${projectId}-${baseChapterId ?? chapterId}-${Date.now()}`
         });
 
-        router.push(`/app/projects/${projectId}/chapters/${chapterId}/runs/${run.id}`);
+        router.push(`/app/projects/${projectId}/chapters/${targetChapterId ?? chapterId}/runs/${run.id}`);
       } catch (error) {
         setSubmitError(mapApiErrorMessage(error, "创建 requirement 或 run 失败"));
       }
