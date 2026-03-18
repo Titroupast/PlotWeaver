@@ -6,3 +6,6 @@
 
 [补充记忆上下文]
 {memory_context}
+
+[风格约束（可选）]
+{style_constraints}

@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -11,7 +13,7 @@ from sqlalchemy import func, select
 
 from plotweaver_api.core.contracts import validate_artifact_payload
 from plotweaver_api.core.errors import NotFoundError, ValidationError
-from plotweaver_api.db.models import Chapter, ChapterVersion, Run, RunArtifact, RunEvent
+from plotweaver_api.db.models import Chapter, ChapterVersion, Character, Memory, MemoryDelta, MergeDecision, Run, RunArtifact, RunEvent
 from plotweaver_api.db.settings import settings
 from plotweaver_api.repositories.artifact_repo import ArtifactRepository
 from plotweaver_api.repositories.run_event_repo import RunEventRepository
@@ -106,6 +108,15 @@ class OrchestratorService:
 
                 step_context[step.name] = validated_payload
 
+                if step.name == "MEMORY_CURATOR":
+                    memory_result = self._persist_memory_pipeline(
+                        run=run,
+                        review_payload=step_context.get("REVIEWER") or {},
+                        gate_payload=validated_payload,
+                        chapter_text=str(step_context.get("chapter_text") or ""),
+                    )
+                    step_context["memory_pipeline"] = memory_result
+
                 checkpoint = dict(run.checkpoint_json or {})
                 completed = list(checkpoint.get("completed_steps", []))
                 if step.name not in completed:
@@ -127,6 +138,7 @@ class OrchestratorService:
                         "llm_used": execution.llm_used,
                         "llm_error": execution.llm_error,
                         "llm_provider": execution.llm_provider,
+                        "memory_pipeline": step_context.get("memory_pipeline") if step.name == "MEMORY_CURATOR" else None,
                     },
                 )
 
@@ -259,14 +271,17 @@ class OrchestratorService:
 
     def _execute_step(self, run: Run, step: str, ctx: dict[str, Any]) -> StepExecutionResult:
         requirement = dict(ctx.get("requirement") or {})
-        previous_chapter = self._read_latest_target_chapter_text(run)
-        memory_context = str(requirement.get("optional_notes") or "")
+        previous_chapter = self._read_previous_chapter_text(run)
+        memory_bundle = self._load_memory_bundle(run, previous_chapter=previous_chapter, requirement=requirement)
+        memory_context = memory_bundle["memory_context"]
+        style_constraints = memory_bundle["style_constraints"]
 
         if step == "PLANNER":
             llm_payload, llm_error = self._planner_with_llm(
                 requirement=requirement,
                 previous_chapter=previous_chapter,
                 memory_context=memory_context,
+                style_constraints=style_constraints,
             )
             if llm_payload is not None:
                 return StepExecutionResult(
@@ -305,6 +320,8 @@ class OrchestratorService:
             llm_result, llm_error = self._writer_with_llm(
                 requirement=requirement,
                 outline=outline,
+                previous_chapter=previous_chapter,
+                memory_context=memory_context,
                 target_chapter=target_chapter,
             )
             if llm_result is not None:
@@ -341,8 +358,15 @@ class OrchestratorService:
             chapter_text = str(ctx.get("chapter_text") or "")
             if not chapter_text:
                 chapter_text = self._read_latest_target_chapter_text(run)
+            chapter_meta = ctx.get("WRITER") or self._find_artifact_payload(run, "CHAPTER_META") or {}
 
-            llm_payload, llm_error = self._reviewer_with_llm(requirement=requirement, chapter_text=chapter_text)
+            llm_payload, llm_error = self._reviewer_with_llm(
+                requirement=requirement,
+                chapter_text=chapter_text,
+                chapter_meta=chapter_meta,
+                character_summary=memory_bundle["character_summary"],
+                world_summary=memory_bundle["world_summary"],
+            )
             if llm_payload is not None:
                 return StepExecutionResult(
                     artifact_payload=llm_payload,
@@ -385,7 +409,14 @@ class OrchestratorService:
 
         if step == "MEMORY_CURATOR":
             review = ctx.get("REVIEWER") or self._find_artifact_payload(run, "REVIEW") or {}
-            llm_payload, llm_error = self._memory_gate_with_llm(review)
+            chapter_text = str(ctx.get("chapter_text") or "")
+            if not chapter_text:
+                chapter_text = self._read_latest_target_chapter_text(run)
+            llm_payload, llm_error = self._memory_gate_with_llm(
+                review=review,
+                chapter_text=chapter_text,
+                main_memory=memory_bundle["main_memory"],
+            )
             if llm_payload is not None:
                 return StepExecutionResult(
                     artifact_payload=llm_payload,
@@ -481,13 +512,24 @@ class OrchestratorService:
         target = self._get_target_chapter(run)
         if target is None:
             return ""
+        return self._read_latest_chapter_text_by_id(str(target.id))
+
+    def _read_previous_chapter_text(self, run: Run) -> str:
+        base_chapter_id = getattr(run, "base_chapter_id", None)
+        if base_chapter_id:
+            content = self._read_latest_chapter_text_by_id(str(base_chapter_id))
+            if content:
+                return content
+        return self._read_latest_target_chapter_text(run)
+
+    def _read_latest_chapter_text_by_id(self, chapter_id: str) -> str:
         session = getattr(self.run_repo, "session", None)
         if session is None or not hasattr(session, "scalar"):
             return ""
 
         stmt = (
             select(ChapterVersion)
-            .where(ChapterVersion.chapter_id == target.id)
+            .where(ChapterVersion.chapter_id == chapter_id)
             .where(ChapterVersion.deleted_at.is_(None))
             .order_by(ChapterVersion.version_no.desc())
             .limit(1)
@@ -499,6 +541,142 @@ class OrchestratorService:
             return self.storage.get_text(latest.storage_key)
         except Exception:
             return ""
+
+    def _load_memory_bundle(self, run: Run, previous_chapter: str, requirement: dict[str, Any]) -> dict[str, str]:
+        notes = str(requirement.get("optional_notes") or "").strip()
+        style_constraints = self._format_style_constraints(requirement.get("tone"))
+        keywords = self._extract_keywords(previous_chapter + "\n" + json.dumps(requirement, ensure_ascii=False))
+        character_lines = self._load_character_lines(run.project_id, keywords, limit=8)
+        world_lines = self._load_memory_lines(run.project_id, "WORLD_RULES", keywords, limit=8)
+        story_lines = self._load_memory_lines(run.project_id, "STORY_SO_FAR", keywords, limit=8)
+
+        context_sections: list[str] = []
+        if character_lines:
+            context_sections.append("[FACT] Characters\n" + "\n".join(f"- {line}" for line in character_lines))
+        if world_lines:
+            context_sections.append("[SUMMARY] World Rules\n" + "\n".join(f"- {line}" for line in world_lines))
+        if story_lines:
+            context_sections.append("[SUMMARY] Story So Far\n" + "\n".join(f"- {line}" for line in story_lines))
+        if notes:
+            context_sections.append("[NOTES]\n" + notes)
+
+        main_memory_sections: list[str] = []
+        if character_lines:
+            main_memory_sections.append("人物设定\n" + "\n".join(character_lines))
+        if world_lines:
+            main_memory_sections.append("世界规则\n" + "\n".join(world_lines))
+        if story_lines:
+            main_memory_sections.append("前情提要\n" + "\n".join(story_lines))
+
+        return {
+            "memory_context": "\n\n".join(context_sections).strip(),
+            "character_summary": "\n".join(character_lines).strip(),
+            "world_summary": "\n".join(world_lines).strip(),
+            "story_summary": "\n".join(story_lines).strip(),
+            "style_constraints": style_constraints,
+            "main_memory": "\n\n".join(main_memory_sections).strip(),
+        }
+
+    def _load_character_lines(self, project_id: str, keywords: list[str], limit: int = 8) -> list[str]:
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "scalars"):
+            return []
+        stmt = (
+            select(Character)
+            .where(Character.project_id == project_id)
+            .where(Character.deleted_at.is_(None))
+            .order_by(Character.updated_at.desc())
+            .limit(50)
+        )
+        rows = list(session.scalars(stmt).all())
+        if not rows:
+            return []
+        picked: list[str] = []
+        for row in rows:
+            aliases = [str(x).strip() for x in (row.aliases_json or []) if str(x).strip()][:3]
+            alias_part = f"（别名：{', '.join(aliases)}）" if aliases else ""
+            card_payload = row.card_json if isinstance(row.card_json, dict) else {}
+            role = str(card_payload.get("role") or "").strip()
+            role_part = f"，角色：{role}" if role else ""
+            line = f"{row.display_name}（ID:{row.character_id}）{alias_part}{role_part}".strip()
+            serialized = json.dumps(card_payload, ensure_ascii=False) + "|" + line
+            if keywords and not any(token in serialized for token in keywords):
+                continue
+            picked.append(line)
+            if len(picked) >= limit:
+                break
+        if picked:
+            return picked
+        fallback = [f"{row.display_name}（ID:{row.character_id}）" for row in rows[:limit]]
+        return fallback
+
+    def _load_memory_lines(self, project_id: str, memory_type: str, keywords: list[str], limit: int = 8) -> list[str]:
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "scalar"):
+            return []
+        stmt = (
+            select(Memory)
+            .where(Memory.project_id == project_id)
+            .where(Memory.memory_type == memory_type)
+            .where(Memory.deleted_at.is_(None))
+            .order_by(Memory.version_no.desc(), Memory.updated_at.desc())
+            .limit(1)
+        )
+        memory_row = session.scalar(stmt)
+        if memory_row is None or not hasattr(memory_row, "summary_json"):
+            return []
+        source_lines = self._to_lines(memory_row.summary_json)
+        if not source_lines:
+            return []
+        if not keywords:
+            return source_lines[:limit]
+        picked: list[str] = []
+        for line in source_lines:
+            if any(token in line for token in keywords):
+                picked.append(line)
+            if len(picked) >= limit:
+                break
+        return picked if picked else source_lines[: min(limit, 5)]
+
+    @staticmethod
+    def _to_lines(summary_json: Any) -> list[str]:
+        if summary_json is None:
+            return []
+        lines: list[str] = []
+        if isinstance(summary_json, str):
+            lines = [ln.strip() for ln in summary_json.splitlines() if ln.strip()]
+        elif isinstance(summary_json, list):
+            lines = [str(item).strip() for item in summary_json if str(item).strip()]
+        elif isinstance(summary_json, dict):
+            for key, value in summary_json.items():
+                if isinstance(value, list):
+                    for item in value:
+                        text = str(item).strip()
+                        if text:
+                            lines.append(f"{key}: {text}")
+                else:
+                    text = str(value).strip()
+                    if text:
+                        lines.append(f"{key}: {text}")
+        return lines
+
+    @staticmethod
+    def _extract_keywords(text: str, limit: int = 10) -> list[str]:
+        chinese_tokens = re.findall(r"[\u4e00-\u9fff]{2,6}", text)
+        word_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_]{2,20}", text)
+        counts: dict[str, int] = {}
+        for token in chinese_tokens + word_tokens:
+            counts[token] = counts.get(token, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], -len(kv[0])))
+        return [item[0] for item in ranked[:limit]]
+
+    @staticmethod
+    def _format_style_constraints(tone: Any) -> str:
+        if isinstance(tone, dict):
+            return json.dumps(tone, ensure_ascii=False, indent=2)
+        if isinstance(tone, str):
+            return tone.strip()
+        return ""
 
     def _load_requirement_context(self, run: Run) -> dict[str, Any]:
         default_ctx = {
@@ -574,6 +752,8 @@ class OrchestratorService:
     def _call_llm_text(
         self, system_prompt: str, user_prompt: str, temperature: float = 0.2
     ) -> tuple[str | None, str | None]:
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return None, "LLM_DISABLED_IN_PYTEST"
         if not settings.ark_api_key or not settings.ark_model:
             return None, "MISSING_ARK_CONFIG"
         try:
@@ -642,13 +822,16 @@ class OrchestratorService:
         requirement: dict[str, Any],
         previous_chapter: str,
         memory_context: str,
+        style_constraints: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
         system_prompt = load_prompt("planner_system.txt")
         user_prompt = render_prompt(
             "planner_user.txt",
             previous_chapter=previous_chapter,
             requirement_json=json.dumps(requirement, ensure_ascii=False, indent=2),
+            requirements=json.dumps(requirement, ensure_ascii=False, indent=2),
             memory_context=memory_context,
+            style_constraints=style_constraints,
         )
         return self._call_llm_json(system_prompt, user_prompt)
 
@@ -656,6 +839,8 @@ class OrchestratorService:
         self,
         requirement: dict[str, Any],
         outline: dict[str, Any],
+        previous_chapter: str,
+        memory_context: str,
         target_chapter: Chapter | None,
     ) -> tuple[StepExecutionResult | None, str | None]:
         chapter_hint = {
@@ -670,6 +855,8 @@ class OrchestratorService:
             requirement_json=json.dumps(requirement, ensure_ascii=False, indent=2),
             outline_json=json.dumps(outline, ensure_ascii=False, indent=2),
             chapter_hint_json=json.dumps(chapter_hint, ensure_ascii=False, indent=2),
+            previous_chapter=previous_chapter,
+            memory_context=memory_context,
         )
         payload, err = self._call_llm_json(system_prompt, user_prompt, temperature=0.7)
         if payload is None:
@@ -702,24 +889,262 @@ class OrchestratorService:
         )
 
     def _reviewer_with_llm(
-        self, requirement: dict[str, Any], chapter_text: str
+        self,
+        requirement: dict[str, Any],
+        chapter_text: str,
+        chapter_meta: dict[str, Any],
+        character_summary: str,
+        world_summary: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
         system_prompt = load_prompt("reviewer_system.txt")
         user_prompt = render_prompt(
             "reviewer_user.txt",
             requirement_json=json.dumps(requirement, ensure_ascii=False, indent=2),
             chapter_text=chapter_text,
+            chapter_meta_json=json.dumps(chapter_meta, ensure_ascii=False, indent=2),
+            character_summary=character_summary,
+            world_summary=world_summary,
         )
         return self._call_llm_json(system_prompt, user_prompt)
 
-    def _memory_gate_with_llm(self, review: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    def _memory_gate_with_llm(
+        self,
+        review: dict[str, Any],
+        chapter_text: str,
+        main_memory: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
         system_prompt = load_prompt("memory_curator_system.txt")
-        user_prompt = render_prompt("memory_curator_user.txt", review_json=json.dumps(review, ensure_ascii=False, indent=2))
+        user_prompt = render_prompt(
+            "memory_curator_user.txt",
+            review_json=json.dumps(review, ensure_ascii=False, indent=2),
+            chapter_text=chapter_text,
+            main_memory=main_memory,
+        )
         return self._call_llm_json(system_prompt, user_prompt)
 
+    def _persist_memory_pipeline(
+        self,
+        run: Run,
+        review_payload: dict[str, Any],
+        gate_payload: dict[str, Any],
+        chapter_text: str,
+    ) -> dict[str, Any]:
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "add") or not hasattr(session, "execute"):
+            return {"enabled": False, "reason": "NO_DB_SESSION"}
+
+        delta_payloads = self._build_memory_delta_payloads(chapter_text=chapter_text, review_payload=review_payload)
+        risk_level = self._evaluate_memory_risk(review_payload=review_payload, chapter_text=chapter_text)
+        auto_merge = bool(gate_payload.get("pass", False)) and risk_level != "HIGH"
+
+        delta_rows: list[MemoryDelta] = []
+        merge_ids: list[str] = []
+
+        for delta_type, payload in delta_payloads.items():
+            row = self._upsert_memory_delta(
+                run=run,
+                delta_type=delta_type,
+                payload=payload,
+                gate_status="AUTO_MERGE" if auto_merge else "PENDING_REVIEW",
+                risk_level=risk_level,
+            )
+            delta_rows.append(row)
+
+            if auto_merge:
+                self._apply_memory_delta_to_main(run=run, delta_type=delta_type, payload=payload)
+                row.gate_status = "MERGED"
+                row.applied_at = datetime.now(timezone.utc)
+                row.applied_by = None
+                decision = MergeDecision(
+                    tenant_id=run.tenant_id,
+                    project_id=run.project_id,
+                    run_id=run.id,
+                    delta_id=row.id,
+                    decision_type="MERGE",
+                    payload_json=payload,
+                    reason="auto merge by memory gate",
+                    created_by=None,
+                )
+                session.add(decision)
+                session.flush()
+                merge_ids.append(self._safe_entity_id(decision, prefix="merge"))
+            else:
+                decision = MergeDecision(
+                    tenant_id=run.tenant_id,
+                    project_id=run.project_id,
+                    run_id=run.id,
+                    delta_id=row.id,
+                    decision_type="PENDING_REVIEW",
+                    payload_json={
+                        "delta_type": delta_type,
+                        "risk_level": risk_level,
+                    },
+                    reason="manual review required",
+                    created_by=None,
+                )
+                session.add(decision)
+                session.flush()
+                merge_ids.append(self._safe_entity_id(decision, prefix="merge"))
+
+        return {
+            "enabled": True,
+            "auto_merge": auto_merge,
+            "risk_level": risk_level,
+            "delta_ids": [self._safe_entity_id(row, prefix="delta") for row in delta_rows],
+            "merge_decision_ids": merge_ids,
+        }
+
+    def _upsert_memory_delta(
+        self,
+        run: Run,
+        delta_type: str,
+        payload: dict[str, Any],
+        gate_status: str,
+        risk_level: str,
+    ) -> MemoryDelta:
+        session = getattr(self.run_repo, "session", None)
+        existing_stmt = (
+            select(MemoryDelta)
+            .where(MemoryDelta.run_id == run.id)
+            .where(MemoryDelta.delta_type == delta_type)
+            .where(MemoryDelta.deleted_at.is_(None))
+            .order_by(MemoryDelta.created_at.desc())
+            .limit(1)
+        )
+        existing = session.scalar(existing_stmt)
+        if existing is not None:
+            existing.payload_json = payload
+            existing.gate_status = gate_status
+            existing.risk_level = risk_level
+            session.flush()
+            session.refresh(existing)
+            return existing
+
+        row = MemoryDelta(
+            tenant_id=run.tenant_id,
+            run_id=run.id,
+            project_id=run.project_id,
+            delta_type=delta_type,
+            payload_json=payload,
+            gate_status=gate_status,
+            risk_level=risk_level,
+        )
+        session.add(row)
+        session.flush()
+        session.refresh(row)
+        if not getattr(row, "id", None):
+            row.id = f"delta-{run.id}-{delta_type}"
+        return row
+
+    def _apply_memory_delta_to_main(self, run: Run, delta_type: str, payload: dict[str, Any]) -> None:
+        session = getattr(self.run_repo, "session", None)
+        latest_stmt = (
+            select(Memory)
+            .where(Memory.project_id == run.project_id)
+            .where(Memory.memory_type == delta_type)
+            .where(Memory.deleted_at.is_(None))
+            .order_by(Memory.version_no.desc(), Memory.updated_at.desc())
+            .limit(1)
+        )
+        latest = session.scalar(latest_stmt)
+        latest_version = int(latest.version_no) if latest is not None else 0
+        merged_summary = self._merge_memory_summary(latest.summary_json if latest is not None else None, payload)
+
+        memory = Memory(
+            tenant_id=run.tenant_id,
+            project_id=run.project_id,
+            memory_type=delta_type,
+            summary_json=merged_summary,
+            version_no=latest_version + 1,
+            storage_bucket=None,
+            storage_key=None,
+        )
+        session.add(memory)
+
+    @staticmethod
+    def _merge_memory_summary(base_summary: Any, delta_payload: dict[str, Any]) -> list[str]:
+        base_lines = OrchestratorService._extract_lines(base_summary)
+        delta_lines = OrchestratorService._extract_lines(delta_payload)
+        seen = {line for line in base_lines if line}
+        merged = [line for line in base_lines if line]
+        for line in delta_lines:
+            if line and line not in seen:
+                merged.append(line)
+                seen.add(line)
+        return merged[:120]
+
+    @staticmethod
+    def _extract_lines(value: Any) -> list[str]:
+        lines: list[str] = []
+        if value is None:
+            return lines
+        if isinstance(value, str):
+            return [line.strip() for line in value.splitlines() if line.strip()]
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if isinstance(item, list):
+                    for nested in item:
+                        text = str(nested).strip()
+                        if text:
+                            lines.append(text)
+                else:
+                    text = str(item).strip()
+                    if text:
+                        lines.append(f"{key}: {text}")
+        return lines
+
+    def _build_memory_delta_payloads(self, chapter_text: str, review_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        chapter_lines = [line.strip() for line in chapter_text.splitlines() if line.strip()]
+        sample_lines = chapter_lines[:8]
+
+        repetition = [str(x).strip() for x in (review_payload.get("repetition_issues") or []) if str(x).strip()]
+        suggestions = [str(x).strip() for x in (review_payload.get("revision_suggestions") or []) if str(x).strip()]
+
+        character_delta = {
+            "characters": sample_lines[:4] or ["主角行为与关系无新增变化"],
+            "review_signals": suggestions[:3],
+        }
+        world_delta = {
+            "rules": sample_lines[2:6] or ["无新增世界规则"],
+            "review_signals": repetition[:3],
+        }
+        story_delta = {
+            "milestones": sample_lines[:6] or ["章节内容为空，未提取到前情增量"],
+        }
+        return {
+            "CHARACTERS": character_delta,
+            "WORLD_RULES": world_delta,
+            "STORY_SO_FAR": story_delta,
+        }
+
+    @staticmethod
+    def _evaluate_memory_risk(review_payload: dict[str, Any], chapter_text: str) -> str:
+        low_bound = min(
+            int(review_payload.get("character_consistency_score", 0)),
+            int(review_payload.get("world_consistency_score", 0)),
+            int(review_payload.get("style_match_score", 0)),
+        )
+        issues = [str(x).strip() for x in (review_payload.get("repetition_issues") or []) if str(x).strip()]
+        high_risk_keywords = ["设定反转", "时间线冲突", "同名角色", "身份冲突", "世界规则冲突"]
+        has_high_keyword = any(keyword in chapter_text for keyword in high_risk_keywords)
+
+        if low_bound < 75 or len(issues) >= 3 or has_high_keyword:
+            return "HIGH"
+        if low_bound < 85 or len(issues) > 0:
+            return "MEDIUM"
+        return "LOW"
     @staticmethod
     def _hash_payload(payload: dict[str, Any]) -> str:
         return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _safe_entity_id(entity: Any, prefix: str) -> str:
+        value = getattr(entity, "id", None)
+        if value:
+            return str(value)
+        return f"{prefix}-unknown"
 
     def _emit(self, run: Run, event_type: str, step: str | None = None, payload: dict[str, Any] | None = None) -> None:
         event_payload = {
@@ -771,3 +1196,21 @@ class OrchestratorService:
             created_at=run.created_at,
             updated_at=run.updated_at,
         )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

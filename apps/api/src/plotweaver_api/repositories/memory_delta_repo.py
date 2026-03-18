@@ -22,3 +22,15 @@ class MemoryDeltaRepository(RepositoryBase[MemoryDelta]):
             .offset(offset)
         )
         return list(self.session.scalars(stmt).all())
+
+    def list_by_project_status(self, project_id: str, gate_status: str, limit: int = 100, offset: int = 0) -> list[MemoryDelta]:
+        stmt = (
+            select(MemoryDelta)
+            .where(MemoryDelta.project_id == project_id)
+            .where(MemoryDelta.gate_status == gate_status)
+            .where(MemoryDelta.deleted_at.is_(None))
+            .order_by(MemoryDelta.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self.session.scalars(stmt).all())

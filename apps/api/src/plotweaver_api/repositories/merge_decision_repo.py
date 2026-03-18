@@ -22,3 +22,14 @@ class MergeDecisionRepository(RepositoryBase[MergeDecision]):
             .offset(offset)
         )
         return list(self.session.scalars(stmt).all())
+
+    def list_by_delta(self, delta_id: str, limit: int = 20, offset: int = 0) -> list[MergeDecision]:
+        stmt = (
+            select(MergeDecision)
+            .where(MergeDecision.delta_id == delta_id)
+            .where(MergeDecision.deleted_at.is_(None))
+            .order_by(MergeDecision.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self.session.scalars(stmt).all())

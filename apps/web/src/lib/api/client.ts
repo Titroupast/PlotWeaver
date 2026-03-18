@@ -1,5 +1,16 @@
-import { getApiBaseUrl, getTenantId, parseJsonOrThrow } from "@/lib/api/shared";
-import type { Artifact, ChapterLatestContent, Project, Requirement, Run, RunEvent } from "@/lib/api/types";
+﻿import { getApiBaseUrl, getTenantId, parseJsonOrThrow } from "@/lib/api/shared";
+import type {
+  Artifact,
+  ChapterLatestContent,
+  MemoryDelta,
+  MemoryDeltaDecisionResponse,
+  MemoryHistoryItem,
+  MemorySnapshotResponse,
+  Project,
+  Requirement,
+  Run,
+  RunEvent
+} from "@/lib/api/types";
 
 function makeHeaders(): HeadersInit {
   return {
@@ -48,5 +59,11 @@ export const clientApi = {
   executeRun: (runId: string, payload?: { auto_continue?: boolean; resume_from_step?: string }) =>
     post<Run>(`/runs/${runId}/execute`, payload ?? {}),
   humanReviewDecision: (runId: string, decision: "APPROVE" | "REQUEST_REWRITE" | "REJECT", reason?: string) =>
-    post<Run>(`/runs/${runId}/review-decision`, { decision, reason })
+    post<Run>(`/runs/${runId}/review-decision`, { decision, reason }),
+  getMemorySnapshots: (projectId: string) => get<MemorySnapshotResponse>(`/memory/projects/${projectId}/snapshots`),
+  listMemoryDeltas: (projectId: string, status?: string) =>
+    get<MemoryDelta[]>(`/memory/projects/${projectId}/deltas?limit=200${status ? `&status=${encodeURIComponent(status)}` : ""}`),
+  decideMemoryDelta: (projectId: string, deltaId: string, payload: { decision: "MERGE" | "REJECT"; reason?: string }) =>
+    post<MemoryDeltaDecisionResponse>(`/memory/projects/${projectId}/deltas/${deltaId}/decision`, payload),
+  listMemoryHistory: (projectId: string) => get<MemoryHistoryItem[]>(`/memory/projects/${projectId}/history?limit=200`)
 };

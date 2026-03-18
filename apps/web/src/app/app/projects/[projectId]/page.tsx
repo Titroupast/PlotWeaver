@@ -26,6 +26,17 @@ export default async function ProjectDetailPage({ params }: Props) {
         <h1>{project.title}</h1>
         <p className="muted">{project.description ?? "暂无简介"}</p>
       </section>
+
+      <section className="card stack">
+        <div className="step-row">
+          <h3>项目操作</h3>
+          <Link href={`/app/projects/${projectId}/memory`}>
+            <button className="secondary">记忆管理</button>
+          </Link>
+        </div>
+        <p className="muted">查看三层主记忆、待确认增量和历史版本。</p>
+      </section>
+
       <section className="grid">
         {chapters.map((chapter) => (
           <article className="card stack" key={chapter.id}>

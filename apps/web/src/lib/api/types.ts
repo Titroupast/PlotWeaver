@@ -1,4 +1,4 @@
-export type Project = {
+﻿export type Project = {
   id: string;
   tenant_id: string;
   title: string;
@@ -74,4 +74,54 @@ export type Artifact = {
   payload_json: Record<string, unknown>;
   payload_hash: string;
   created_at: string;
+};
+
+export type MemorySnapshotItem = {
+  memory_type: string;
+  version_no: number;
+  summary_json: Record<string, unknown> | unknown[] | null;
+  updated_at: string;
+};
+
+export type MemorySnapshotResponse = {
+  project_id: string;
+  snapshots: MemorySnapshotItem[];
+};
+
+export type MemoryDelta = {
+  id: string;
+  run_id: string;
+  project_id: string;
+  delta_type: string;
+  payload_json: Record<string, unknown>;
+  gate_status: string;
+  risk_level: string;
+  applied_at: string | null;
+  applied_by: string | null;
+  created_at: string;
+};
+
+export type MergeDecision = {
+  id: string;
+  project_id: string;
+  run_id: string | null;
+  delta_id: string | null;
+  decision_type: string;
+  payload_json: Record<string, unknown>;
+  reason: string | null;
+  created_at: string;
+};
+
+export type MemoryDeltaDecisionResponse = {
+  delta: MemoryDelta;
+  merge_decision: MergeDecision | null;
+};
+
+export type MemoryHistoryItem = {
+  id: string;
+  memory_type: string;
+  version_no: number;
+  summary_json: Record<string, unknown> | unknown[] | null;
+  created_at: string;
+  updated_at: string;
 };

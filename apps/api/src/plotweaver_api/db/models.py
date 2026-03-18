@@ -82,6 +82,7 @@ class DecisionType(str, enum.Enum):
     SPLIT = "SPLIT"
     ALIAS_LINK = "ALIAS_LINK"
     REJECT = "REJECT"
+    PENDING_REVIEW = "PENDING_REVIEW"
 
 
 class TenantScopedMixin:
@@ -309,7 +310,7 @@ class Memory(Base, TenantScopedMixin, AuditSoftDeleteMixin):
     memory_type: Mapped[str] = mapped_column(String(32), nullable=False)
     storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    summary_json: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
@@ -347,6 +348,9 @@ class MemoryDelta(Base, TenantScopedMixin):
     delta_type: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     gate_status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'PENDING'"))
+    risk_level: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'LOW'"))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_by: Mapped[str | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -355,11 +359,13 @@ class MergeDecision(Base, TenantScopedMixin):
     __tablename__ = "merge_decisions"
     __table_args__ = (
         Index("ix_merge_decisions_tenant_project_created", "tenant_id", "project_id", "created_at"),
+        Index("ix_merge_decisions_tenant_delta_created", "tenant_id", "delta_id", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     project_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     run_id: Mapped[str | None] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True)
+    delta_id: Mapped[str | None] = mapped_column(UUID(as_uuid=True), ForeignKey("memory_deltas.id", ondelete="SET NULL"), nullable=True)
     decision_type: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)

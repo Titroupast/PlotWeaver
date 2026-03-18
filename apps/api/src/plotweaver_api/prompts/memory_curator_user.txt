@@ -1,2 +1,8 @@
-﻿[评审结果 JSON]
+﻿[本章正文]
+{chapter_text}
+
+[主记忆（人物/世界/前情）]
+{main_memory}
+
+[评审结果 JSON]
 {review_json}

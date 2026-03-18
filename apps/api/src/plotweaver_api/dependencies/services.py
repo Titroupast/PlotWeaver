@@ -9,6 +9,7 @@ from plotweaver_api.repositories.artifact_repo import ArtifactRepository
 from plotweaver_api.repositories.chapter_repo import ChapterRepository
 from plotweaver_api.repositories.character_repo import CharacterRepository
 from plotweaver_api.repositories.memory_delta_repo import MemoryDeltaRepository
+from plotweaver_api.repositories.memory_repo import MemoryRepository
 from plotweaver_api.repositories.merge_decision_repo import MergeDecisionRepository
 from plotweaver_api.repositories.project_repo import ProjectRepository
 from plotweaver_api.repositories.requirement_repo import RequirementRepository
@@ -58,9 +59,10 @@ def get_artifact_service(session: Session = Depends(get_db_session)) -> Artifact
 
 def get_memory_service(session: Session = Depends(get_db_session)) -> MemoryService:
     return MemoryService(
-        CharacterRepository(session),
-        MemoryDeltaRepository(session),
-        MergeDecisionRepository(session),
+        character_repo=CharacterRepository(session),
+        memory_repo=MemoryRepository(session),
+        delta_repo=MemoryDeltaRepository(session),
+        decision_repo=MergeDecisionRepository(session),
     )
 
 
