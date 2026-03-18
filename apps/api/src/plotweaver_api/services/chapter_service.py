@@ -1,11 +1,13 @@
 ﻿from __future__ import annotations
 
+import re
+
 from sqlalchemy import select
 
 from plotweaver_api.core.errors import NotFoundError
-from plotweaver_api.db.models import Chapter, ChapterVersion
+from plotweaver_api.db.models import Chapter, ChapterVersion, RunArtifact
 from plotweaver_api.repositories.chapter_repo import ChapterRepository
-from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterLatestContentResponse, ChapterResponse
+from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterLatestContentResponse, ChapterResponse, ChapterVersionItem
 from plotweaver_api.storage.interface import StorageClient
 from plotweaver_api.storage.local_storage import LocalStorageClient
 
@@ -38,20 +40,23 @@ class ChapterService:
         return [self._to_response(item) for item in self.repo.list_by_project(project_id, limit=limit, offset=offset)]
 
     def get_latest_content(self, project_id: str, chapter_id: str) -> ChapterLatestContentResponse:
+        return self.get_content(project_id=project_id, chapter_id=chapter_id, version_no=None)
+
+    def get_content(self, project_id: str, chapter_id: str, version_no: int | None = None) -> ChapterLatestContentResponse:
         chapter = self.repo.get(chapter_id)
         if chapter is None or chapter.deleted_at is not None or str(chapter.project_id) != project_id:
             raise NotFoundError("Chapter not found", details={"project_id": project_id, "chapter_id": chapter_id})
 
-        stmt = (
-            select(ChapterVersion)
-            .where(ChapterVersion.chapter_id == chapter.id)
-            .where(ChapterVersion.deleted_at.is_(None))
-            .order_by(ChapterVersion.version_no.desc())
-            .limit(1)
-        )
+        stmt = select(ChapterVersion).where(ChapterVersion.chapter_id == chapter.id).where(ChapterVersion.deleted_at.is_(None))
+        if version_no is not None:
+            stmt = stmt.where(ChapterVersion.version_no == version_no)
+        stmt = stmt.order_by(ChapterVersion.version_no.desc()).limit(1)
         latest = self.repo.session.scalar(stmt)
         if latest is None:
-            raise NotFoundError("Chapter content not found", details={"chapter_id": chapter_id})
+            raise NotFoundError(
+                "Chapter content not found",
+                details={"chapter_id": chapter_id, "version_no": version_no},
+            )
 
         content = self.storage.get_text(latest.storage_key)
         return ChapterLatestContentResponse(
@@ -64,6 +69,62 @@ class ChapterService:
             content=content,
             created_at=latest.created_at,
         )
+
+    def list_versions(self, project_id: str, chapter_id: str, limit: int = 50, offset: int = 0) -> list[ChapterVersionItem]:
+        chapter = self.repo.get(chapter_id)
+        if chapter is None or chapter.deleted_at is not None or str(chapter.project_id) != project_id:
+            raise NotFoundError("Chapter not found", details={"project_id": project_id, "chapter_id": chapter_id})
+
+        stmt = (
+            select(ChapterVersion)
+            .where(ChapterVersion.chapter_id == chapter.id)
+            .where(ChapterVersion.deleted_at.is_(None))
+            .order_by(ChapterVersion.version_no.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = list(self.repo.session.scalars(stmt).all())
+
+        run_id_cache: dict[str, str | None] = {}
+        title_by_run_id: dict[str, str] = {}
+        for row in rows:
+            run_id = self._extract_run_id_from_storage_key(row.storage_key)
+            run_id_cache[row.storage_key] = run_id
+            if not run_id or run_id in title_by_run_id:
+                continue
+            artifact_stmt = (
+                select(RunArtifact)
+                .where(RunArtifact.run_id == run_id)
+                .where(RunArtifact.artifact_type == "CHAPTER_META")
+                .where(RunArtifact.deleted_at.is_(None))
+                .order_by(RunArtifact.created_at.desc())
+                .limit(1)
+            )
+            artifact = self.repo.session.scalar(artifact_stmt)
+            if artifact and isinstance(artifact.payload_json, dict):
+                title = str(artifact.payload_json.get("title") or "").strip()
+                if title:
+                    title_by_run_id[run_id] = title
+
+        return [
+            ChapterVersionItem(
+                chapter_id=str(chapter.id),
+                version_no=row.version_no,
+                run_id=run_id_cache.get(row.storage_key),
+                version_title=title_by_run_id.get(run_id_cache.get(row.storage_key) or ""),
+                storage_bucket=row.storage_bucket,
+                storage_key=row.storage_key,
+                content_sha256=row.content_sha256,
+                byte_size=row.byte_size,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def _extract_run_id_from_storage_key(storage_key: str) -> str | None:
+        match = re.search(r"/runs/([0-9a-fA-F-]{36})/", storage_key or "")
+        return match.group(1) if match else None
 
     @staticmethod
     def _to_response(chapter: Chapter) -> ChapterResponse:

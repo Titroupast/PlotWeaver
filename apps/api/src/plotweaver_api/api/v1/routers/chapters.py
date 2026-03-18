@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from plotweaver_api.dependencies.auth import get_user_id
 from plotweaver_api.dependencies.db import get_tenant_id
 from plotweaver_api.dependencies.services import get_chapter_service
-from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterLatestContentResponse, ChapterResponse
+from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterLatestContentResponse, ChapterResponse, ChapterVersionItem
 from plotweaver_api.services.chapter_service import ChapterService
 
 router = APIRouter(prefix="/projects/{project_id}/chapters", tags=["chapters"])
@@ -39,3 +39,24 @@ def get_latest_chapter_content(
     service: ChapterService = Depends(get_chapter_service),
 ) -> ChapterLatestContentResponse:
     return service.get_latest_content(project_id=project_id, chapter_id=chapter_id)
+
+
+@router.get("/{chapter_id}/content", response_model=ChapterLatestContentResponse)
+def get_chapter_content(
+    project_id: str,
+    chapter_id: str,
+    version_no: int | None = Query(default=None, ge=1),
+    service: ChapterService = Depends(get_chapter_service),
+) -> ChapterLatestContentResponse:
+    return service.get_content(project_id=project_id, chapter_id=chapter_id, version_no=version_no)
+
+
+@router.get("/{chapter_id}/versions", response_model=list[ChapterVersionItem])
+def list_chapter_versions(
+    project_id: str,
+    chapter_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: ChapterService = Depends(get_chapter_service),
+) -> list[ChapterVersionItem]:
+    return service.list_versions(project_id=project_id, chapter_id=chapter_id, limit=limit, offset=offset)

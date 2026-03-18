@@ -11,6 +11,11 @@ class ProjectCreateRequest(BaseModel):
     language: str = "zh-CN"
 
 
+class ProjectImportResponse(BaseModel):
+    project: "ProjectResponse"
+    chapter_count: int
+
+
 class ProjectResponse(BaseModel):
     id: str
     tenant_id: str
@@ -20,3 +25,6 @@ class ProjectResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+ProjectImportResponse.model_rebuild()

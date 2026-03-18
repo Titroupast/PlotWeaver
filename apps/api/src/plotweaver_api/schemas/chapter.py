@@ -39,3 +39,15 @@ class ChapterLatestContentResponse(BaseModel):
     byte_size: int
     content: str
     created_at: datetime
+
+
+class ChapterVersionItem(BaseModel):
+    chapter_id: str
+    version_no: int
+    run_id: str | None = None
+    version_title: str | None = None
+    storage_bucket: str
+    storage_key: str
+    content_sha256: str
+    byte_size: int
+    created_at: datetime
