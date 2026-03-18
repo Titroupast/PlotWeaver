@@ -261,7 +261,7 @@ export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelP
               <div className="step-row">
                 <strong>{event.event_type}</strong>
                 {event.step ? <span className="pill">{event.step}</span> : null}
-                <span className="muted">{new Date(event.created_at).toLocaleString()}</span>
+                <span className="muted">{formatTimestamp(event.created_at)}</span>
               </div>
               {event.payload_json ? <pre>{JSON.stringify(event.payload_json, null, 2)}</pre> : null}
             </article>
@@ -293,3 +293,11 @@ function findStepMetaFromEvents(
   }
   return null;
 }
+
+
+function formatTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+}
+

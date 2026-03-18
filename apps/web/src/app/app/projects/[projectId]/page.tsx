@@ -1,6 +1,7 @@
 ﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ChapterVersionPanel } from "@/components/chapter-version-panel";
 import { serverApi } from "@/lib/api/server";
 
 type Props = {
@@ -30,25 +31,30 @@ export default async function ProjectDetailPage({ params }: Props) {
       <section className="card stack">
         <div className="step-row">
           <h3>项目操作</h3>
-          <Link href={`/app/projects/${projectId}/memory`}>
-            <button className="secondary">记忆管理</button>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory`}>
+            记忆审查
+          </Link>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory/summary`}>
+            记忆总结
           </Link>
         </div>
-        <p className="muted">查看三层主记忆、待确认增量和历史版本。</p>
+        <p className="muted">记忆审查负责增量合并；记忆总结为独立任务，按需手动重建。</p>
       </section>
 
       <section className="grid">
         {chapters.map((chapter) => (
           <article className="card stack" key={chapter.id}>
-            <div className="step-row">
-              <h3>{chapter.title}</h3>
-              <span className="pill">{chapter.status}</span>
-            </div>
-            <p className="muted">{chapter.summary || "暂无摘要"}</p>
+            <ChapterVersionPanel
+              projectId={projectId}
+              chapterId={chapter.id}
+              chapterTitle={chapter.title}
+              chapterStatus={chapter.status}
+              chapterSummary={chapter.summary || "暂无摘要"}
+            />
             <div className="step-row">
               <span className="muted">章节序号: {chapter.order_index}</span>
-              <Link href={`/app/projects/${projectId}/chapters/${chapter.id}/configure`}>
-                <button>进入续写配置</button>
+              <Link className="button-link" href={`/app/projects/${projectId}/chapters/${chapter.id}/configure`}>
+                进入续写配置
               </Link>
             </div>
           </article>

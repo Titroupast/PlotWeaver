@@ -54,8 +54,12 @@ export function MemoryReviewPanel({ projectId, initialDeltas }: Props) {
             <pre>{JSON.stringify(delta.payload_json, null, 2)}</pre>
             {delta.gate_status === "PENDING_REVIEW" ? (
               <div className="step-row">
-                <button disabled={pending} onClick={() => onDecision(delta.id, "MERGE")}>合并</button>
-                <button className="secondary" disabled={pending} onClick={() => onDecision(delta.id, "REJECT")}>拒绝</button>
+                <button className="action-merge" disabled={pending} onClick={() => onDecision(delta.id, "MERGE")}>
+                  <span>合并</span>
+                </button>
+                <button className="action-reject" disabled={pending} onClick={() => onDecision(delta.id, "REJECT")}>
+                  <span>拒绝</span>
+                </button>
               </div>
             ) : null}
           </article>

@@ -9,65 +9,26 @@ type Props = {
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectMemoryPage({ params }: Props) {
+export default async function ProjectMemoryReviewPage({ params }: Props) {
   const { projectId } = await params;
-  const [snapshots, pendingDeltas, history] = await Promise.all([
-    serverApi.getMemorySnapshots(projectId).catch(() => ({ project_id: projectId, snapshots: [] })),
-    serverApi.listMemoryDeltas(projectId, "PENDING_REVIEW").catch(() => []),
-    serverApi.listMemoryHistory(projectId).catch(() => [])
-  ]);
+  const pendingDeltas = await serverApi.listMemoryDeltas(projectId, "PENDING_REVIEW").catch(() => []);
 
   return (
     <div className="container stack">
       <section className="card stack">
         <div className="step-row">
-          <h1>记忆管理</h1>
-          <Link href={`/app/projects/${projectId}`}>
-            <button className="secondary">返回项目</button>
+          <h1>记忆审查</h1>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}`}>
+            返回项目
+          </Link>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory/summary`}>
+            记忆总结
           </Link>
         </div>
-        <p className="muted">主记忆标准来源为 memories.summary_json，本页用于人工确认高风险增量。</p>
-      </section>
-
-      <section className="card stack">
-        <h3>三层主记忆快照</h3>
-        {snapshots.snapshots.length === 0 ? (
-          <p className="muted">暂无主记忆快照。</p>
-        ) : (
-          <div className="timeline">
-            {snapshots.snapshots.map((item) => (
-              <article className="timeline-item" key={`${item.memory_type}-${item.version_no}`}>
-                <div className="step-row">
-                  <strong>{item.memory_type}</strong>
-                  <span className="pill">v{item.version_no}</span>
-                </div>
-                <pre>{JSON.stringify(item.summary_json, null, 2)}</pre>
-              </article>
-            ))}
-          </div>
-        )}
+        <p className="muted">本页仅处理 memory delta 的人工审核（合并/拒绝），不自动重建总结。</p>
       </section>
 
       <MemoryReviewPanel projectId={projectId} initialDeltas={pendingDeltas} />
-
-      <section className="card stack">
-        <h3>主记忆历史（简版）</h3>
-        {history.length === 0 ? (
-          <p className="muted">暂无历史记录。</p>
-        ) : (
-          <div className="timeline">
-            {history.slice(0, 30).map((item) => (
-              <article className="timeline-item" key={item.id}>
-                <div className="step-row">
-                  <strong>{item.memory_type}</strong>
-                  <span className="pill">v{item.version_no}</span>
-                  <span className="muted">{new Date(item.updated_at).toLocaleString()}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
     </div>
   );
 }

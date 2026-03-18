@@ -23,8 +23,14 @@ export default async function RunProcessPage({ params }: Props) {
         <h1>生成过程</h1>
         <p className="muted">运行 ID: {runId}</p>
         <div className="step-row">
-          <Link href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/review`}>
-            <button className="secondary">查看审阅页</button>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/review`}>
+            查看审阅页
+          </Link>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory`}>
+            记忆审查
+          </Link>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory/summary`}>
+            记忆总结
           </Link>
         </div>
       </section>
