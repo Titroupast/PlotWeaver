@@ -1,5 +1,6 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
+import { MarkdownContentEditor } from "@/components/markdown-content-editor";
 import { RunLivePanel } from "@/components/run-live-panel";
 import { serverApi } from "@/lib/api/server";
 
@@ -23,13 +24,47 @@ export default async function RunProcessPage({ params }: Props) {
         <h1>生成过程</h1>
         <p className="muted">运行 ID: {runId}</p>
         <div className="step-row">
-          <Link className="button-link secondary" href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/review`}>
+          <Link
+            className="button-link secondary"
+            href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/planner`}
+            prefetch={false}
+          >
+            Planner 界面
+          </Link>
+          <Link
+            className="button-link secondary"
+            href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/writer`}
+            prefetch={false}
+          >
+            Writer 界面
+          </Link>
+          <Link
+            className="button-link secondary"
+            href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/reviewer`}
+            prefetch={false}
+          >
+            Reviewer 界面
+          </Link>
+          <Link
+            className="button-link secondary"
+            href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/memory-curator`}
+            prefetch={false}
+          >
+            Memory Curator 界面
+          </Link>
+        </div>
+        <div className="step-row">
+          <Link
+            className="button-link secondary"
+            href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/review`}
+            prefetch={false}
+          >
             查看审阅页
           </Link>
-          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory`}>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory`} prefetch={false}>
             记忆审查
           </Link>
-          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory/summary`}>
+          <Link className="button-link secondary" href={`/app/projects/${projectId}/memory/summary`} prefetch={false}>
             记忆总结
           </Link>
         </div>
@@ -44,7 +79,7 @@ export default async function RunProcessPage({ params }: Props) {
           <p className="muted">
             {latestContent.storage_bucket} / {latestContent.storage_key}
           </p>
-          <pre>{latestContent.content}</pre>
+          <MarkdownContentEditor projectId={projectId} chapterId={chapterId} value={latestContent} />
         </section>
       ) : null}
 

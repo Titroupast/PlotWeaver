@@ -1,8 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { clientApi } from "@/lib/api/client";
+import { MarkdownContentEditor } from "@/components/markdown-content-editor";
 import type { ChapterLatestContent, ChapterVersion } from "@/lib/api/types";
 
 type ChapterVersionPanelProps = {
@@ -13,7 +14,13 @@ type ChapterVersionPanelProps = {
   chapterStatus: string;
 };
 
-export function ChapterVersionPanel({ projectId, chapterId, chapterSummary, chapterTitle, chapterStatus }: ChapterVersionPanelProps) {
+export function ChapterVersionPanel({
+  projectId,
+  chapterId,
+  chapterSummary,
+  chapterTitle,
+  chapterStatus
+}: ChapterVersionPanelProps) {
   const [versions, setVersions] = useState<ChapterVersion[]>([]);
   const [content, setContent] = useState<ChapterLatestContent | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | "">("");
@@ -55,7 +62,7 @@ export function ChapterVersionPanel({ projectId, chapterId, chapterSummary, chap
     () =>
       versions.map((item) => ({
         value: item.version_no,
-        label: `v${item.version_no} - ${item.version_title || chapterTitle}`
+        label: `v${item.version_no} · ${item.version_title || chapterTitle}`
       })),
     [versions, chapterTitle]
   );
@@ -81,10 +88,11 @@ export function ChapterVersionPanel({ projectId, chapterId, chapterSummary, chap
 
   return (
     <div className="stack">
-      <div className="step-row">
+      <div className="step-row chapter-heading">
         <h3>{selectedTitle || chapterTitle}</h3>
         <span className="pill">{chapterStatus}</span>
       </div>
+
       <div className="step-row">
         <label htmlFor={`version-${chapterId}`}>正文版本</label>
         <select
@@ -102,10 +110,7 @@ export function ChapterVersionPanel({ projectId, chapterId, chapterSummary, chap
         </select>
       </div>
 
-      {selectedVersion ? (
-        <p className="muted">当前查看：v{selectedVersion} · 标题：{selectedTitle}</p>
-      ) : null}
-
+      {selectedVersion ? <p className="muted">当前查看：v{selectedVersion} · 标题：{selectedTitle}</p> : null}
       {error ? <p className="status-danger">{error}</p> : null}
 
       {content ? (
@@ -113,7 +118,12 @@ export function ChapterVersionPanel({ projectId, chapterId, chapterSummary, chap
           <p className="muted">
             版本时间：{new Date(content.created_at).toLocaleString("zh-CN")} · {content.byte_size} bytes
           </p>
-          <pre>{content.content}</pre>
+          <MarkdownContentEditor
+            projectId={projectId}
+            chapterId={chapterId}
+            value={content}
+            onSaved={(next) => setContent(next)}
+          />
         </div>
       ) : (
         <p className="muted">{chapterSummary || "暂无正文版本，请先运行续写。"}</p>
