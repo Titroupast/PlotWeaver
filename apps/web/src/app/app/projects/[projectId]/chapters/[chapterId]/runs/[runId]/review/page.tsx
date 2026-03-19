@@ -29,7 +29,7 @@ export default async function ReviewPage({ params }: Props) {
       {artifacts.length === 0 ? (
         <section className="card">暂无结构化产物，请先执行步骤。</section>
       ) : (
-        <ArtifactReview artifacts={artifacts} />
+        <ArtifactReview runId={runId} artifacts={artifacts} />
       )}
     </div>
   );

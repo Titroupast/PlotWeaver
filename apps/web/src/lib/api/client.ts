@@ -41,6 +41,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return parseJsonOrThrow<T>(res);
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: "PUT",
+    headers: makeHeaders(),
+    body: JSON.stringify(body),
+    cache: "no-store"
+  });
+  return parseJsonOrThrow<T>(res);
+}
+
 async function del(path: string): Promise<void> {
   const res = await fetch(`${getApiBaseUrl()}${path}`, {
     method: "DELETE",
@@ -77,6 +87,13 @@ export const clientApi = {
     ),
   listChapterVersions: (projectId: string, chapterId: string) =>
     get<ChapterVersion[]>(`/projects/${projectId}/chapters/${chapterId}/versions?limit=100`),
+  updateChapterContent: (projectId: string, chapterId: string, content: string, versionNo?: number) =>
+    put<ChapterLatestContent>(
+      `/projects/${projectId}/chapters/${chapterId}/content${versionNo ? `?version_no=${versionNo}` : ""}`,
+      { content }
+    ),
+  updateArtifactPayload: (runId: string, artifactId: string, payloadJson: Record<string, unknown>) =>
+    put<Artifact>(`/runs/${runId}/artifacts/${artifactId}`, { payload_json: payloadJson }),
   executeRun: (runId: string, payload?: { auto_continue?: boolean; resume_from_step?: string }) =>
     post<Run>(`/runs/${runId}/execute`, payload ?? {}),
   humanReviewDecision: (runId: string, decision: "APPROVE" | "REQUEST_REWRITE" | "REJECT", reason?: string) =>

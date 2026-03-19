@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
+import { ArtifactReview } from "@/components/artifact-review";
 import { clientApi } from "@/lib/api/client";
 import { mapApiErrorMessage } from "@/lib/api/error-message";
 import type { Artifact, Run, RunEvent } from "@/lib/api/types";
 
 const STEPS = ["PLANNER", "WRITER", "REVIEWER", "MEMORY_CURATOR"];
+type AgentStep = (typeof STEPS)[number];
+export type { AgentStep };
 const STEP_BY_ARTIFACT_TYPE: Record<string, string> = {
   OUTLINE: "PLANNER",
   CHAPTER_META: "WRITER",
@@ -22,9 +25,10 @@ type RunLivePanelProps = {
   runId: string;
   initialRun: Run;
   initialEvents: RunEvent[];
+  fixedStep?: AgentStep;
 };
 
-export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelProps) {
+export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: RunLivePanelProps) {
   const [run, setRun] = useState<Run>(initialRun);
   const [events, setEvents] = useState<RunEvent[]>(initialEvents);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -162,6 +166,7 @@ export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelP
   }, [runId]);
 
   const activeStep = run.current_step ?? "PLANNER";
+
   const sortedEvents = useMemo(
     () => [...events].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
     [events]
@@ -179,23 +184,43 @@ export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelP
   }, [run.state]);
 
   const canRunNext = run.state === "QUEUED" || run.state === "WAITING_USER_APPROVAL" || run.state === "RETRYING";
+  const canRunFixedStep = !terminal && (run.state === "QUEUED" || run.state === "WAITING_USER_APPROVAL" || run.state === "RETRYING");
 
   const onExecute = () => {
     startTransition(async () => {
       setError(null);
       try {
+        if (fixedStep) {
+          await clientApi.executeRun(runId, { auto_continue: false, resume_from_step: fixedStep });
+          return;
+        }
         await clientApi.executeRun(runId, { auto_continue: false });
       } catch (e) {
-        setError(mapApiErrorMessage(e, "启动下一步失败"));
+        setError(mapApiErrorMessage(e, fixedStep ? `从 ${fixedStep} 重生成失败` : "启动下一步失败"));
       }
     });
   };
+
+  const displayArtifacts = useMemo(() => {
+    if (!fixedStep) return sortedArtifacts;
+    return sortedArtifacts.filter((artifact) => STEP_BY_ARTIFACT_TYPE[artifact.artifact_type] === fixedStep);
+  }, [sortedArtifacts, fixedStep]);
+
+  const displayEvents = useMemo(() => {
+    if (!fixedStep) return sortedEvents;
+    return sortedEvents.filter((event) => {
+      if (event.step === fixedStep) return true;
+      return event.event_type.startsWith("RUN_");
+    });
+  }, [sortedEvents, fixedStep]);
+
+  const panelTitle = fixedStep ? `${fixedStep} 智能体` : "运行状态";
 
   return (
     <div className="stack">
       <div className="grid two">
         <section className="card stack">
-          <h3>运行状态</h3>
+          <h3>{panelTitle}</h3>
           <div className="step-row">
             <span className="pill">{run.state}</span>
             <span className="muted">{runUiStatus}</span>
@@ -216,48 +241,39 @@ export function RunLivePanel({ runId, initialRun, initialEvents }: RunLivePanelP
             })}
           </div>
           <div className="step-row">
-            <button onClick={onExecute} disabled={pending || terminal || !canRunNext}>
-              {pending ? "执行中..." : run.state === "QUEUED" ? "开始第一步" : "继续下一步"}
+            <button
+              type="button"
+              className="action-merge"
+              onClick={onExecute}
+              disabled={pending || (fixedStep ? !canRunFixedStep : !canRunNext)}
+            >
+              <span className="btn-text">
+                {pending ? "执行中..." : fixedStep ? `从 ${fixedStep} 重生成` : run.state === "QUEUED" ? "开始第一步" : "继续下一步"}
+              </span>
             </button>
           </div>
           {error ? <p className="status-danger">{error}</p> : null}
         </section>
 
         <section className="card stack">
-          <h3>阶段输出（模型结果）</h3>
-          <div className="timeline">
-            {sortedArtifacts.length === 0 ? (
-              <p className="muted">暂无产物，先执行第一步。</p>
-            ) : (
-              sortedArtifacts.map((artifact) => (
-                <article className="timeline-item" key={artifact.id}>
-                  <div className="step-row">
-                    <strong>{artifact.artifact_type}</strong>
-                    <span className="muted">v{artifact.version_no}</span>
-                    {(() => {
-                      const meta = findStepMetaFromEvents(sortedEvents, STEP_BY_ARTIFACT_TYPE[artifact.artifact_type]);
-                      if (!meta) return null;
-                      return (
-                        <>
-                          <span className="pill">{meta.llm_used ? "已调用模型" : "回退默认"}</span>
-                          {meta.llm_error ? <span className="status-danger">错误: {meta.llm_error}</span> : null}
-                        </>
-                      );
-                    })()}
-                  </div>
-                  <pre>{JSON.stringify(artifact.payload_json, null, 2)}</pre>
-                </article>
-              ))
-            )}
-          </div>
+          <h3>{fixedStep ? `${fixedStep} 阶段输出` : "阶段输出（模型结果）"}</h3>
+          {displayArtifacts.length === 0 ? (
+            <p className="muted">暂无产物，先执行第一步。</p>
+          ) : (
+            <ArtifactReview runId={runId} artifacts={displayArtifacts} />
+          )}
         </section>
       </div>
 
       <section className="card stack">
-        <h3>事件时间线</h3>
+        <h3>{fixedStep ? `${fixedStep} 事件时间线` : "事件时间线"}</h3>
         <div className="timeline">
-          {sortedEvents.map((event) => (
-            <article className="timeline-item" key={event.id}>
+          {displayEvents.map((event) => (
+            <article
+              className="timeline-item"
+              key={event.id}
+              id={event.step ? `event-step-${event.step}` : undefined}
+            >
               <div className="step-row">
                 <strong>{event.event_type}</strong>
                 {event.step ? <span className="pill">{event.step}</span> : null}
@@ -278,26 +294,9 @@ function findLatestCursor(events: RunEvent[]): string | undefined {
   return withCursor[withCursor.length - 1].cursor ?? undefined;
 }
 
-function findStepMetaFromEvents(
-  events: RunEvent[],
-  step: string | undefined
-): { llm_used: boolean; llm_error: string | null } | null {
-  if (!step) return null;
-  for (let i = events.length - 1; i >= 0; i -= 1) {
-    const evt = events[i];
-    if (evt.event_type !== "STEP_COMPLETED" || evt.step !== step) continue;
-    const payload = evt.payload_json ?? {};
-    const llmUsed = Boolean(payload.llm_used);
-    const llmError = typeof payload.llm_error === "string" ? payload.llm_error : null;
-    return { llm_used: llmUsed, llm_error: llmError };
-  }
-  return null;
-}
-
-
 function formatTimestamp(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+  return date.toISOString().replace("T", " ").replace("Z", " UTC");
 }
 
