@@ -11,6 +11,12 @@ type Props = {
   initialDeltas: MemoryDelta[];
 };
 
+const MEMORY_LABELS: Record<string, string> = {
+  CHARACTERS: "人物关系",
+  WORLD_RULES: "世界规则",
+  STORY_SO_FAR: "前情提要"
+};
+
 export function MemoryReviewPanel({ projectId, initialDeltas }: Props) {
   const [deltas, setDeltas] = useState<MemoryDelta[]>(initialDeltas);
   const [error, setError] = useState<string | null>(null);
@@ -46,19 +52,22 @@ export function MemoryReviewPanel({ projectId, initialDeltas }: Props) {
         {deltas.map((delta) => (
           <article className="timeline-item" key={delta.id}>
             <div className="step-row">
-              <strong>{delta.delta_type}</strong>
+              <strong>{MEMORY_LABELS[delta.delta_type] ?? delta.delta_type}</strong>
               <span className="pill">{delta.gate_status}</span>
               <span className="muted">风险: {delta.risk_level}</span>
             </div>
             <p className="muted">来源 Run: {delta.run_id}</p>
-            <pre>{JSON.stringify(delta.payload_json, null, 2)}</pre>
+            <details>
+              <summary>查看原始 JSON</summary>
+              <pre>{JSON.stringify(delta.payload_json, null, 2)}</pre>
+            </details>
             {delta.gate_status === "PENDING_REVIEW" ? (
               <div className="step-row">
                 <button className="action-merge" disabled={pending} onClick={() => onDecision(delta.id, "MERGE")}>
-                  <span>合并</span>
+                  <span className="btn-text">合并</span>
                 </button>
                 <button className="action-reject" disabled={pending} onClick={() => onDecision(delta.id, "REJECT")}>
-                  <span>拒绝</span>
+                  <span className="btn-text">拒绝</span>
                 </button>
               </div>
             ) : null}

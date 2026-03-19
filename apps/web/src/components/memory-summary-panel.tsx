@@ -35,7 +35,7 @@ export function MemorySummaryPanel({ projectId }: Props) {
       <div className="step-row">
         <h3>记忆总结任务</h3>
         <button className="action-merge" disabled={pending} onClick={onRebuild}>
-          <span>{pending ? "重建中..." : "重建总结"}</span>
+          <span className="btn-text">{pending ? "重建中..." : "重建总结"}</span>
         </button>
       </div>
       <p className="muted">该操作会基于当前项目全部章节正文，重建人物关系、世界规则、剧情摘要三层主记忆。</p>
