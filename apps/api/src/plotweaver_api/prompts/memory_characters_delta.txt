@@ -1,0 +1,36 @@
+[任务]
+你要基于“现有人物关系 + 本章正文 + 评审结果”，提取本章人物增量，输出严格 JSON。
+
+[现有人物关系 JSON]
+{existing_characters_json}
+
+[本章正文]
+{chapter_text}
+
+[评审结果 JSON]
+{review_json}
+
+[输出格式]
+```json
+{
+  "characters": [
+    {
+      "character_id": null,
+      "canonical_name": "",
+      "display_name": "",
+      "aliases": [],
+      "role": "",
+      "key_memories": [],
+      "relationships": [],
+      "merge_status": "PENDING_REVIEW"
+    }
+  ]
+}
+```
+
+[输出要求]
+- 仅输出 JSON，不要任何解释。
+- 只写“本章新增或发生变化”的角色；无增量时返回 `"characters": []`。
+- 禁止把叙述短语当人名（如“我不知”“低声”“有人”）。
+- `key_memories` 只保留 1-3 条关键事实，禁止长段原文复制。
+- `relationships` 用简短关系句（如“与顾潮生对立加深”）。

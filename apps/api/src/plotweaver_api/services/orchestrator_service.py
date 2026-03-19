@@ -113,7 +113,7 @@ class OrchestratorService:
                         run=run,
                         review_payload=step_context.get("REVIEWER") or {},
                         gate_payload=validated_payload,
-                        chapter_text=str(step_context.get("chapter_text") or ""),
+                        chapter_text=str(step_context.get("chapter_text") or execution.chapter_text or ""),
                     )
                     step_context["memory_pipeline"] = memory_result
                     # Keep MEMORY_GATE artifact consistent with memory pipeline policy.
@@ -345,8 +345,13 @@ class OrchestratorService:
 
             now = datetime.now(timezone.utc).replace(microsecond=0)
             created_iso = now.isoformat().replace("+00:00", "Z")
-            title = str(chapter_hint.get("title") or "Generated Chapter")
+            order_index = int(chapter_hint.get("order_index") or 1)
             chapter_goal = str(outline.get("chapter_goal") or requirement.get("chapter_goal") or "继续推进剧情")
+            title = self._normalize_chapter_title(
+                raw_title=str(chapter_hint.get("title") or ""),
+                order_index=order_index,
+                fallback_hint=chapter_goal,
+            )
             beats = [str(x) for x in (outline.get("beats") or [])]
             chapter_text = self._compose_chapter_text(title=title, chapter_goal=chapter_goal, beats=beats)
 
@@ -358,7 +363,7 @@ class OrchestratorService:
                     "subtitle": chapter_hint.get("subtitle"),
                     "volume_id": chapter_hint.get("volume_id"),
                     "arc_id": chapter_hint.get("arc_id"),
-                    "order_index": int(chapter_hint.get("order_index") or 1),
+                    "order_index": order_index,
                     "status": "GENERATED",
                     "summary": chapter_text[:120],
                     "created_at": created_iso,
@@ -438,6 +443,7 @@ class OrchestratorService:
             if llm_payload is not None:
                 return StepExecutionResult(
                     artifact_payload=llm_payload,
+                    chapter_text=chapter_text,
                     llm_used=True,
                     llm_error=None,
                     llm_provider="ARK",
@@ -456,6 +462,7 @@ class OrchestratorService:
                     "issues": issues,
                     "recommended_action": "AUTO_MERGE" if passed else "REVIEW_MANUALLY",
                 },
+                chapter_text=chapter_text,
                 llm_used=False,
                 llm_error=llm_error,
                 llm_provider="ARK",
@@ -573,7 +580,11 @@ class OrchestratorService:
             return None
 
         next_index = int(base.order_index or 0) + 1
-        title = str((chapter_meta or {}).get("title") or f"第{next_index}章")
+        title = self._normalize_chapter_title(
+            raw_title=str((chapter_meta or {}).get("title") or ""),
+            order_index=next_index,
+            fallback_hint="",
+        )
         chapter_key = str((chapter_meta or {}).get("chapter_id") or f"chapter_{next_index:03d}")
         new_chapter = Chapter(
             tenant_id=run.tenant_id,
@@ -615,7 +626,11 @@ class OrchestratorService:
                 }
                 return chapter
             return {
-                "title": target_chapter.title or "Generated Chapter",
+                "title": self._normalize_chapter_title(
+                    raw_title=str(target_chapter.title or ""),
+                    order_index=int(target_chapter.order_index or 1),
+                    fallback_hint="",
+                ),
                 "kind": target_chapter.kind or "NORMAL",
                 "order_index": target_chapter.order_index or 1,
                 "chapter_id": target_chapter.chapter_key,
@@ -1256,17 +1271,25 @@ class OrchestratorService:
                 elif retry_err:
                     err = retry_err
         now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        chapter_meta.setdefault("chapter_id", chapter_hint["chapter_id"] or "chapter_auto")
-        chapter_meta.setdefault("kind", chapter_hint["kind"] or "NORMAL")
-        chapter_meta.setdefault("title", chapter_hint["title"] or "Generated Chapter")
+        # Hard alignment: chapter identity/order must follow target chapter hint, not model hallucination.
+        chapter_meta["chapter_id"] = chapter_hint["chapter_id"] or "chapter_auto"
+        chapter_meta["kind"] = chapter_hint["kind"] or str(chapter_meta.get("kind") or "NORMAL")
         chapter_meta.setdefault("subtitle", None)
-        chapter_meta.setdefault("volume_id", None)
-        chapter_meta.setdefault("arc_id", None)
-        chapter_meta.setdefault("order_index", chapter_hint["order_index"] or 1)
-        chapter_meta.setdefault("status", "GENERATED")
-        chapter_meta.setdefault("summary", chapter_text[:120])
-        chapter_meta.setdefault("created_at", now)
-        chapter_meta.setdefault("updated_at", now)
+        chapter_meta["volume_id"] = chapter_hint.get("volume_id")
+        chapter_meta["arc_id"] = chapter_hint.get("arc_id")
+        chapter_meta["order_index"] = int(chapter_hint["order_index"] or 1)
+        chapter_meta["status"] = str(chapter_meta.get("status") or "GENERATED")
+        chapter_meta["summary"] = str(chapter_meta.get("summary") or chapter_text[:120])
+        chapter_meta["created_at"] = now
+        chapter_meta["updated_at"] = now
+        order_index = int(chapter_hint["order_index"] or 1)
+        chapter_meta["order_index"] = order_index
+        fallback_hint = str(outline.get("chapter_goal") or requirement.get("chapter_goal") or "")
+        chapter_meta["title"] = self._normalize_chapter_title(
+            raw_title=str(chapter_meta.get("title") or ""),
+            order_index=order_index,
+            fallback_hint=fallback_hint,
+        )
         return (
             StepExecutionResult(
                 artifact_payload=chapter_meta,
@@ -1289,6 +1312,25 @@ class OrchestratorService:
             except Exception:
                 pass
         return 1800
+
+    @staticmethod
+    def _normalize_chapter_title(raw_title: str, order_index: int, fallback_hint: str) -> str:
+        title = (raw_title or "").replace("　", " ").strip()
+        fallback = (fallback_hint or "").replace("　", " ").strip()
+
+        def strip_prefix(text: str) -> str:
+            text = re.sub(r"^\s*第\s*\d+\s*章", "", text)
+            text = re.sub(r"^\s*[:：\-—]\s*", "", text)
+            return text.strip()
+
+        suffix = strip_prefix(title)
+        if not suffix:
+            suffix = strip_prefix(fallback)
+        if not suffix:
+            suffix = "未命名章节"
+
+        suffix = re.sub(r"\s+", " ", suffix).strip(" \t\r\n:：-—")
+        return f"第{int(order_index)}章：{suffix}"
 
     def _reviewer_with_llm(
         self,
@@ -1335,7 +1377,11 @@ class OrchestratorService:
         if session is None or not hasattr(session, "add") or not hasattr(session, "execute"):
             return {"enabled": False, "reason": "NO_DB_SESSION"}
 
-        delta_payloads = self._build_memory_delta_payloads(chapter_text=chapter_text, review_payload=review_payload)
+        delta_payloads = self._build_memory_delta_payloads(
+            run=run,
+            chapter_text=chapter_text,
+            review_payload=review_payload,
+        )
         _ = gate_payload
         risk_level = self._evaluate_memory_risk(review_payload=review_payload, chapter_text=chapter_text)
         # Policy: memory merge must always be manually reviewed.
@@ -1479,7 +1525,11 @@ class OrchestratorService:
                         lines.append(f"{key}: {text}")
         return lines
 
-    def _build_memory_delta_payloads(self, chapter_text: str, review_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    def _build_memory_delta_payloads(self, run: Run, chapter_text: str, review_payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        llm_payloads = self._build_memory_delta_payloads_with_llm(run=run, chapter_text=chapter_text, review_payload=review_payload)
+        if llm_payloads is not None:
+            return llm_payloads
+
         chapter_lines = [line.strip() for line in chapter_text.splitlines() if line.strip()]
         sample_lines = chapter_lines[:8]
         empty_reason = "章节内容为空，未提取到前情增量"
@@ -1505,6 +1555,124 @@ class OrchestratorService:
             "WORLD_RULES": world_delta,
             "STORY_SO_FAR": story_delta,
         }
+
+    def _build_memory_delta_payloads_with_llm(
+        self,
+        run: Run,
+        chapter_text: str,
+        review_payload: dict[str, Any],
+    ) -> dict[str, dict[str, Any]] | None:
+        if not chapter_text.strip():
+            return None
+
+        existing_characters = self._load_latest_memory_json(run.project_id, "CHARACTERS")
+        existing_world_rules = self._load_latest_memory_json(run.project_id, "WORLD_RULES")
+        existing_story = self._load_latest_memory_json(run.project_id, "STORY_SO_FAR")
+
+        review_json = json.dumps(review_payload, ensure_ascii=False, indent=2)
+
+        # CHARACTERS delta
+        char_prompt = render_prompt(
+            "memory_characters_delta.txt",
+            existing_characters_json=json.dumps(existing_characters or {"characters": []}, ensure_ascii=False, indent=2),
+            chapter_text=chapter_text,
+            review_json=review_json,
+        )
+        char_payload, _ = self._call_llm_json(
+            system_prompt="你是角色设定增量整理助手。只输出 JSON 对象。",
+            user_prompt=char_prompt,
+            temperature=0.2,
+        )
+        if not isinstance(char_payload, dict) or not isinstance(char_payload.get("characters"), list):
+            return None
+
+        # WORLD_RULES delta
+        world_prompt = render_prompt(
+            "memory_world_rules_delta.txt",
+            existing_world_rules_json=json.dumps(existing_world_rules or {"rules": []}, ensure_ascii=False, indent=2),
+            chapter_text=chapter_text,
+            review_json=review_json,
+        )
+        world_text, _ = self._call_llm_text(
+            system_prompt="你是世界规则增量整理助手。仅输出有序列表。",
+            user_prompt=world_prompt,
+            temperature=0.2,
+        )
+        world_rules = self._parse_numbered_lines(world_text)
+        if not world_rules:
+            return None
+
+        # STORY_SO_FAR delta
+        story_prompt = render_prompt(
+            "memory_story_so_far_delta.txt",
+            existing_story_so_far_json=json.dumps(existing_story or {"milestones": []}, ensure_ascii=False, indent=2),
+            chapter_text=chapter_text,
+            review_json=review_json,
+        )
+        story_text, _ = self._call_llm_text(
+            system_prompt="你是前情提要增量整理助手。仅输出有序列表。",
+            user_prompt=story_prompt,
+            temperature=0.2,
+        )
+        milestones = self._parse_numbered_lines(story_text)
+        if not milestones:
+            return None
+
+        return {
+            "CHARACTERS": {
+                "characters": char_payload.get("characters", []),
+                "review_signals": [str(x).strip() for x in (review_payload.get("revision_suggestions") or []) if str(x).strip()][:3],
+            },
+            "WORLD_RULES": {
+                "rules": world_rules[:12],
+                "review_signals": [str(x).strip() for x in (review_payload.get("repetition_issues") or []) if str(x).strip()][:3],
+            },
+            "STORY_SO_FAR": {
+                "milestones": milestones[:12],
+            },
+        }
+
+    def _load_latest_memory_json(self, project_id: str, memory_type: str) -> dict[str, Any] | None:
+        session = getattr(self.run_repo, "session", None)
+        if session is None or not hasattr(session, "scalar"):
+            return None
+        stmt = (
+            select(Memory)
+            .where(Memory.project_id == project_id)
+            .where(Memory.memory_type == memory_type)
+            .where(Memory.deleted_at.is_(None))
+            .order_by(Memory.version_no.desc(), Memory.updated_at.desc())
+            .limit(1)
+        )
+        row = session.scalar(stmt)
+        if row is None:
+            return None
+        if isinstance(row.summary_json, dict):
+            return row.summary_json
+        if isinstance(row.summary_json, list):
+            if memory_type == "CHARACTERS":
+                return {"characters": row.summary_json}
+            if memory_type == "WORLD_RULES":
+                return {"rules": row.summary_json}
+            if memory_type == "STORY_SO_FAR":
+                return {"milestones": row.summary_json}
+        return None
+
+    @staticmethod
+    def _parse_numbered_lines(text: str | None) -> list[str]:
+        if not text:
+            return []
+        lines: list[str] = []
+        for raw in text.splitlines():
+            item = raw.strip()
+            if not item:
+                continue
+            item = re.sub(r"^\d+[\.、]\s*", "", item)
+            item = re.sub(r"^-\s*", "", item)
+            item = item.strip()
+            if item:
+                lines.append(item)
+        return lines
 
     @staticmethod
     def _evaluate_memory_risk(review_payload: dict[str, Any], chapter_text: str) -> str:

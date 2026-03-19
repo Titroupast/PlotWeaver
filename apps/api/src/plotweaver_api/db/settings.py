@@ -22,8 +22,12 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/plotweaver"
+    db_pool_size: int = 20
+    db_max_overflow: int = 40
+    db_pool_timeout: int = 60
+    db_pool_recycle: int = 1800
     default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
-    storage_local_root: str = "./.local_storage"
+    storage_local_root: str = str(_REPO_ROOT / ".local_storage")
     storage_bucket: str = "local-filesystem"
     ark_api_key: str = ""
     ark_model: str = ""

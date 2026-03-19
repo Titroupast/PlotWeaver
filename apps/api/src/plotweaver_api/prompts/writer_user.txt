@@ -18,6 +18,9 @@
 
 [硬性规则]
 - 目标是“下一章”，必须与 chapter_hint_json.order_index 对齐，不得复写上一章标题。
+- chapter_meta.title 必须严格使用格式：`第{order_index}章：{中文副标题}`。
+- 禁止只输出“第N章”，也禁止只输出副标题（如“樱花落时的初遇”）。
+- 示例（合法）：`第4章：她吻在我额头上的那一秒，整座城市的时间都慢了下来`
 - chapter_text 必须是连续叙事正文，不得输出提纲体。
 - chapter_text 字数不少于 1800 字；若 requirement.target_length.min 更高，则按更高值执行。
 - 必须落实 must_include，严格避免 must_not_include。
