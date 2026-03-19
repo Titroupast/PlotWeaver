@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import hashlib
 import re
 
 from sqlalchemy import select
@@ -68,6 +69,46 @@ class ChapterService:
             byte_size=latest.byte_size,
             content=content,
             created_at=latest.created_at,
+        )
+
+    def update_content(
+        self,
+        project_id: str,
+        chapter_id: str,
+        content: str,
+        version_no: int | None = None,
+    ) -> ChapterLatestContentResponse:
+        chapter = self.repo.get(chapter_id)
+        if chapter is None or chapter.deleted_at is not None or str(chapter.project_id) != project_id:
+            raise NotFoundError("Chapter not found", details={"project_id": project_id, "chapter_id": chapter_id})
+
+        stmt = select(ChapterVersion).where(ChapterVersion.chapter_id == chapter.id).where(ChapterVersion.deleted_at.is_(None))
+        if version_no is not None:
+            stmt = stmt.where(ChapterVersion.version_no == version_no)
+        stmt = stmt.order_by(ChapterVersion.version_no.desc()).limit(1)
+        target = self.repo.session.scalar(stmt)
+        if target is None:
+            raise NotFoundError(
+                "Chapter content not found",
+                details={"chapter_id": chapter_id, "version_no": version_no},
+            )
+
+        payload = content or ""
+        self.storage.put_text(target.storage_key, payload)
+        encoded = payload.encode("utf-8")
+        target.byte_size = len(encoded)
+        target.content_sha256 = hashlib.sha256(encoded).hexdigest()
+        self.repo.session.flush()
+
+        return ChapterLatestContentResponse(
+            chapter_id=str(chapter.id),
+            version_no=target.version_no,
+            storage_bucket=target.storage_bucket,
+            storage_key=target.storage_key,
+            content_sha256=target.content_sha256,
+            byte_size=target.byte_size,
+            content=payload,
+            created_at=target.created_at,
         )
 
     def list_versions(self, project_id: str, chapter_id: str, limit: int = 50, offset: int = 0) -> list[ChapterVersionItem]:

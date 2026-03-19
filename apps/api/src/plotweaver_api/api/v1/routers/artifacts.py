@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from plotweaver_api.dependencies.db import get_tenant_id
 from plotweaver_api.dependencies.services import get_artifact_service
-from plotweaver_api.schemas.artifact import ArtifactCreateRequest, ArtifactResponse
+from plotweaver_api.schemas.artifact import ArtifactCreateRequest, ArtifactResponse, ArtifactUpdateRequest
 from plotweaver_api.services.artifact_service import ArtifactService
 
 router = APIRouter(prefix="/runs/{run_id}/artifacts", tags=["artifacts"])
@@ -29,3 +29,13 @@ def create_artifact(
 ) -> ArtifactResponse:
     payload = payload.model_copy(update={"run_id": run_id})
     return service.create(tenant_id=tenant_id, payload=payload)
+
+
+@router.put("/{artifact_id}", response_model=ArtifactResponse)
+def update_artifact(
+    run_id: str,
+    artifact_id: str,
+    payload: ArtifactUpdateRequest,
+    service: ArtifactService = Depends(get_artifact_service),
+) -> ArtifactResponse:
+    return service.update_payload(artifact_id=artifact_id, run_id=run_id, payload_json=payload.payload_json)

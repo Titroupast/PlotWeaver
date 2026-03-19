@@ -41,6 +41,10 @@ class ChapterLatestContentResponse(BaseModel):
     created_at: datetime
 
 
+class ChapterContentUpdateRequest(BaseModel):
+    content: str
+
+
 class ChapterVersionItem(BaseModel):
     chapter_id: str
     version_no: int

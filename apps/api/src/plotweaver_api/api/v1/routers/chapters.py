@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, Query
 from plotweaver_api.dependencies.auth import get_user_id
 from plotweaver_api.dependencies.db import get_tenant_id
 from plotweaver_api.dependencies.services import get_chapter_service
-from plotweaver_api.schemas.chapter import ChapterCreateRequest, ChapterLatestContentResponse, ChapterResponse, ChapterVersionItem
+from plotweaver_api.schemas.chapter import (
+    ChapterContentUpdateRequest,
+    ChapterCreateRequest,
+    ChapterLatestContentResponse,
+    ChapterResponse,
+    ChapterVersionItem,
+)
 from plotweaver_api.services.chapter_service import ChapterService
 
 router = APIRouter(prefix="/projects/{project_id}/chapters", tags=["chapters"])
@@ -49,6 +55,17 @@ def get_chapter_content(
     service: ChapterService = Depends(get_chapter_service),
 ) -> ChapterLatestContentResponse:
     return service.get_content(project_id=project_id, chapter_id=chapter_id, version_no=version_no)
+
+
+@router.put("/{chapter_id}/content", response_model=ChapterLatestContentResponse)
+def update_chapter_content(
+    project_id: str,
+    chapter_id: str,
+    payload: ChapterContentUpdateRequest,
+    version_no: int | None = Query(default=None, ge=1),
+    service: ChapterService = Depends(get_chapter_service),
+) -> ChapterLatestContentResponse:
+    return service.update_content(project_id=project_id, chapter_id=chapter_id, content=payload.content, version_no=version_no)
 
 
 @router.get("/{chapter_id}/versions", response_model=list[ChapterVersionItem])

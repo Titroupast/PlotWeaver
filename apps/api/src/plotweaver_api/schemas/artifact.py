@@ -22,3 +22,7 @@ class ArtifactResponse(BaseModel):
     payload_json: dict[str, Any]
     payload_hash: str = ""
     created_at: datetime
+
+
+class ArtifactUpdateRequest(BaseModel):
+    payload_json: dict[str, Any]
