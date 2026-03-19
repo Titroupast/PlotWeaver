@@ -7,7 +7,9 @@ export default function AppError({ error, reset }: { error: Error; reset: () => 
         <h2>Something went wrong</h2>
         <p className="status-danger">{error.message}</p>
         <div>
-          <button onClick={reset}>Retry</button>
+          <button type="button" className="action-merge" onClick={reset}>
+            <span className="btn-text">Retry</span>
+          </button>
         </div>
       </div>
     </div>

@@ -54,8 +54,8 @@ export function CreateProjectForm() {
         />
       </div>
       <div className="step-row">
-        <button type="submit" disabled={pending || !title.trim()}>
-          {pending ? "创建中..." : "创建项目"}
+        <button type="submit" className="action-merge" disabled={pending || !title.trim()}>
+          <span className="btn-text">{pending ? "创建中..." : "创建项目"}</span>
         </button>
       </div>
       {error ? <p className="status-danger">{error}</p> : null}

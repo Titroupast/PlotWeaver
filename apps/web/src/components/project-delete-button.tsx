@@ -28,7 +28,7 @@ export function ProjectDeleteButton({ projectId }: { projectId: string }) {
   return (
     <div className="stack">
       <button className="action-reject" type="button" onClick={onDelete} disabled={pending}>
-        <span>{pending ? "删除中..." : "删除项目"}</span>
+        <span className="btn-text">{pending ? "删除中..." : "删除项目"}</span>
       </button>
       {error ? <p className="status-danger">{error}</p> : null}
     </div>

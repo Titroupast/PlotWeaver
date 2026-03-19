@@ -7,8 +7,8 @@ export default function NotFoundPage() {
         <h1>Not Found</h1>
         <p className="muted">The page you requested does not exist.</p>
         <div>
-          <Link href="/app/projects">
-            <button>Back to Projects</button>
+          <Link className="button-link" href="/app/projects">
+            Back to Projects
           </Link>
         </div>
       </section>

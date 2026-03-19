@@ -97,8 +97,8 @@ export function ConfigureRunForm({ projectId, chapterId, baseChapterId, targetCh
         <textarea id="continuityConstraints" rows={5} {...register("continuityConstraints")} />
       </div>
       <div className="step-row">
-        <button type="submit" disabled={pending}>
-          {pending ? "创建中..." : "创建需求并进入执行"}
+        <button type="submit" className="action-merge" disabled={pending}>
+          <span className="btn-text">{pending ? "创建中..." : "创建需求并进入执行"}</span>
         </button>
       </div>
       {submitError ? <p className="status-danger">{submitError}</p> : null}

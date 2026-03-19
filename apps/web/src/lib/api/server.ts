@@ -29,43 +29,65 @@ function makeHeaders(contentType: string | null = "application/json"): HeadersIn
 }
 
 async function get<T>(path: string, init?: RequestInit): Promise<T> {
-  const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
-  const mergedSignal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    signal: mergedSignal,
-    headers: {
-      ...makeHeaders(),
-      ...(init?.headers ?? {})
-    },
-    cache: "no-store"
-  });
-  return parseJsonOrThrow<T>(res);
+  try {
+    const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
+    const mergedSignal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+    const res = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      signal: mergedSignal,
+      headers: {
+        ...makeHeaders(),
+        ...(init?.headers ?? {})
+      },
+      cache: "no-store"
+    });
+    return parseJsonOrThrow<T>(res);
+  } catch (error) {
+    throw normalizeFetchError(error, `GET ${path}`);
+  }
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    method: "POST",
-    signal: timeoutSignal,
-    headers: makeHeaders(),
-    body: JSON.stringify(body),
-    cache: "no-store"
-  });
-  return parseJsonOrThrow<T>(res);
+  try {
+    const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
+    const res = await fetch(`${getApiBaseUrl()}${path}`, {
+      method: "POST",
+      signal: timeoutSignal,
+      headers: makeHeaders(),
+      body: JSON.stringify(body),
+      cache: "no-store"
+    });
+    return parseJsonOrThrow<T>(res);
+  } catch (error) {
+    throw normalizeFetchError(error, `POST ${path}`);
+  }
 }
 
 async function del(path: string): Promise<void> {
-  const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    method: "DELETE",
-    signal: timeoutSignal,
-    headers: makeHeaders(),
-    cache: "no-store"
-  });
-  if (!res.ok) {
-    await parseJsonOrThrow<unknown>(res);
+  try {
+    const timeoutSignal = AbortSignal.timeout(API_TIMEOUT_MS);
+    const res = await fetch(`${getApiBaseUrl()}${path}`, {
+      method: "DELETE",
+      signal: timeoutSignal,
+      headers: makeHeaders(),
+      cache: "no-store"
+    });
+    if (!res.ok) {
+      await parseJsonOrThrow<unknown>(res);
+    }
+  } catch (error) {
+    throw normalizeFetchError(error, `DELETE ${path}`);
   }
+}
+
+function normalizeFetchError(error: unknown, action: string): Error {
+  if (error instanceof Error) {
+    const prefix = `${action} failed`;
+    const next = new Error(error.message ? `${prefix}: ${error.message}` : prefix);
+    next.name = error.name || "Error";
+    return next;
+  }
+  return new Error(`${action} failed`);
 }
 
 export const serverApi = {

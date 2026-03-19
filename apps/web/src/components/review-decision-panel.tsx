@@ -52,13 +52,13 @@ export function ReviewDecisionPanel({ runId, runState }: ReviewDecisionPanelProp
           </div>
           <div className="step-row">
             <button disabled={pending} onClick={() => submitDecision("APPROVE")}>
-              通过
+              <span className="btn-text">通过</span>
             </button>
             <button className="secondary" disabled={pending} onClick={() => submitDecision("REQUEST_REWRITE")}>
-              退回重写
+              <span className="btn-text">退回重写</span>
             </button>
             <button className="secondary" disabled={pending} onClick={() => submitDecision("REJECT")}>
-              拒绝
+              <span className="btn-text">拒绝</span>
             </button>
           </div>
         </>

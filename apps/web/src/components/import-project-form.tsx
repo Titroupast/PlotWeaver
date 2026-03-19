@@ -74,8 +74,8 @@ export function ImportProjectForm() {
         />
       </div>
       <div className="step-row">
-        <button type="submit" disabled={pending || !title.trim() || !file}>
-          {pending ? "导入中..." : "导入并拆分章节"}
+        <button type="submit" className="action-merge" disabled={pending || !title.trim() || !file}>
+          <span className="btn-text">{pending ? "导入中..." : "导入并拆分章节"}</span>
         </button>
       </div>
       {ok ? <p className="status-ok">{ok}</p> : null}
