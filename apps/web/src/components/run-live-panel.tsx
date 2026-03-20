@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
@@ -10,12 +10,14 @@ import type { Artifact, Run, RunEvent } from "@/lib/api/types";
 const STEPS = ["PLANNER", "WRITER", "REVIEWER", "MEMORY_CURATOR"];
 type AgentStep = (typeof STEPS)[number];
 export type { AgentStep };
-const STEP_BY_ARTIFACT_TYPE: Record<string, string> = {
+
+const STEP_BY_ARTIFACT_TYPE: Record<string, AgentStep> = {
   OUTLINE: "PLANNER",
   CHAPTER_META: "WRITER",
   REVIEW: "REVIEWER",
   MEMORY_GATE: "MEMORY_CURATOR"
 };
+
 const DONE_STATES = new Set(["SUCCEEDED"]);
 const FAILED_STATES = new Set(["FAILED", "DEAD_LETTER", "CANCELLED"]);
 
@@ -166,7 +168,6 @@ export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: Ru
   }, [runId]);
 
   const activeStep = run.current_step ?? "PLANNER";
-
   const sortedEvents = useMemo(
     () => [...events].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
     [events]
@@ -175,6 +176,7 @@ export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: Ru
     () => [...artifacts].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
     [artifacts]
   );
+
   const terminal = useMemo(() => DONE_STATES.has(run.state) || FAILED_STATES.has(run.state), [run.state]);
   const runUiStatus = useMemo(() => {
     if (run.state === "WAITING_HUMAN_REVIEW") return "需人工复核";
@@ -184,7 +186,7 @@ export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: Ru
   }, [run.state]);
 
   const canRunNext = run.state === "QUEUED" || run.state === "WAITING_USER_APPROVAL" || run.state === "RETRYING";
-  const canRunFixedStep = !terminal && (run.state === "QUEUED" || run.state === "WAITING_USER_APPROVAL" || run.state === "RETRYING");
+  const canRunFixedStep = !terminal && canRunNext;
 
   const onExecute = () => {
     startTransition(async () => {
@@ -214,20 +216,64 @@ export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: Ru
     });
   }, [sortedEvents, fixedStep]);
 
+  const businessEvents = useMemo(
+    () => displayEvents.filter((event) => ["RUN_EXECUTION_STARTED", "STEP_STARTED", "STEP_COMPLETED", "STEP_AWAITING_APPROVAL", "HUMAN_REVIEW_REQUIRED", "RUN_SUCCEEDED", "RUN_FAILED"].includes(event.event_type)),
+    [displayEvents]
+  );
+
+  const riskSummary = useMemo(() => {
+    const latestReview = [...sortedArtifacts].reverse().find((item) => item.artifact_type === "REVIEW");
+    if (!latestReview) return null;
+    const payload = latestReview.payload_json as Record<string, unknown>;
+    const issues = Array.isArray(payload.repetition_issues)
+      ? payload.repetition_issues.filter((x): x is string => typeof x === "string")
+      : [];
+    const suggestions = Array.isArray(payload.revision_suggestions)
+      ? payload.revision_suggestions.filter((x): x is string => typeof x === "string")
+      : [];
+    const score = typeof payload.style_match_score === "number" ? payload.style_match_score : null;
+    if (issues.length === 0 && suggestions.length === 0 && score !== null && score >= 85) return null;
+    return {
+      score,
+      issues: issues.slice(0, 3),
+      suggestions: suggestions.slice(0, 2)
+    };
+  }, [sortedArtifacts]);
+
   const panelTitle = fixedStep ? `${fixedStep} 智能体` : "运行状态";
 
   return (
-    <div className="stack">
+    <div className="stack" id="run-live-panel">
+      <section className="card stack" aria-live="polite">
+        <h3>执行摘要</h3>
+        <div className="step-row">
+          <span className="pill">{run.state}</span>
+          <span className="muted">{runUiStatus}</span>
+          <span className="muted">尝试 {run.attempt_count}</span>
+          <span className="muted">重试 {run.retry_count}</span>
+          <span className="muted">流状态: {streamStatus}</span>
+        </div>
+        {riskSummary ? (
+          <div className="risk-banner">
+            <strong>风险提醒</strong>
+            {riskSummary.score !== null ? <span className="pill">风格分 {riskSummary.score}</span> : null}
+            {riskSummary.issues.map((issue) => (
+              <p key={issue}>{issue}</p>
+            ))}
+            {riskSummary.suggestions.map((sug) => (
+              <p className="muted" key={sug}>
+                建议：{sug}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="status-ok">当前未检测到明显高风险冲突。</p>
+        )}
+      </section>
+
       <div className="grid two">
         <section className="card stack">
           <h3>{panelTitle}</h3>
-          <div className="step-row">
-            <span className="pill">{run.state}</span>
-            <span className="muted">{runUiStatus}</span>
-            <span className="muted">尝试 {run.attempt_count}</span>
-            <span className="muted">重试 {run.retry_count}</span>
-          </div>
-          <p className="muted">流状态: {streamStatus}</p>
           <div className="stack">
             {STEPS.map((step) => {
               const stepState =
@@ -252,11 +298,11 @@ export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: Ru
               </span>
             </button>
           </div>
-          {error ? <p className="status-danger">{error}</p> : null}
+          {error ? <p className="status-danger" role="status">{error}</p> : null}
         </section>
 
         <section className="card stack">
-          <h3>{fixedStep ? `${fixedStep} 阶段输出` : "阶段输出（模型结果）"}</h3>
+          <h3>{fixedStep ? `${fixedStep} 阶段输出` : "阶段输出（可编辑）"}</h3>
           {displayArtifacts.length === 0 ? (
             <p className="muted">暂无产物，先执行第一步。</p>
           ) : (
@@ -266,27 +312,47 @@ export function RunLivePanel({ runId, initialRun, initialEvents, fixedStep }: Ru
       </div>
 
       <section className="card stack">
-        <h3>{fixedStep ? `${fixedStep} 事件时间线` : "事件时间线"}</h3>
+        <h3>{fixedStep ? `${fixedStep} 事件流` : "事件流"}</h3>
         <div className="timeline">
-          {displayEvents.map((event) => (
-            <article
-              className="timeline-item"
-              key={event.id}
-              id={event.step ? `event-step-${event.step}` : undefined}
-            >
+          {businessEvents.map((event) => (
+            <article className="timeline-item" key={event.id}>
               <div className="step-row">
-                <strong>{event.event_type}</strong>
+                <strong>{EVENT_LABELS[event.event_type] ?? event.event_type}</strong>
                 {event.step ? <span className="pill">{event.step}</span> : null}
                 <span className="muted">{formatTimestamp(event.created_at)}</span>
               </div>
-              {event.payload_json ? <pre>{JSON.stringify(event.payload_json, null, 2)}</pre> : null}
             </article>
           ))}
         </div>
+        <details>
+          <summary>展开技术详情（调试）</summary>
+          <div className="timeline">
+            {displayEvents.map((event) => (
+              <article className="timeline-item" key={`${event.id}-raw`}>
+                <div className="step-row">
+                  <strong>{event.event_type}</strong>
+                  {event.step ? <span className="pill">{event.step}</span> : null}
+                  <span className="muted">{formatTimestamp(event.created_at)}</span>
+                </div>
+                {event.payload_json ? <pre>{JSON.stringify(event.payload_json, null, 2)}</pre> : null}
+              </article>
+            ))}
+          </div>
+        </details>
       </section>
     </div>
   );
 }
+
+const EVENT_LABELS: Record<string, string> = {
+  RUN_EXECUTION_STARTED: "运行开始",
+  STEP_STARTED: "步骤开始",
+  STEP_COMPLETED: "步骤完成",
+  STEP_AWAITING_APPROVAL: "等待人工确认",
+  HUMAN_REVIEW_REQUIRED: "需要人工复核",
+  RUN_SUCCEEDED: "运行成功",
+  RUN_FAILED: "运行失败"
+};
 
 function findLatestCursor(events: RunEvent[]): string | undefined {
   const withCursor = events.filter((event) => event.cursor);
@@ -299,4 +365,3 @@ function formatTimestamp(value: string): string {
   if (Number.isNaN(date.getTime())) return value;
   return date.toISOString().replace("T", " ").replace("Z", " UTC");
 }
-
