@@ -68,6 +68,7 @@ export function MarkdownContentEditor({ projectId, chapterId, value, onSaved }: 
               <span className="btn-text">取消</span>
             </button>
           </div>
+          <p className="muted">保存后将直接覆盖当前版本，并影响后续审阅与记忆输入。</p>
         </div>
       ) : (
         <div className="stack">
@@ -81,7 +82,7 @@ export function MarkdownContentEditor({ projectId, chapterId, value, onSaved }: 
           </div>
         </div>
       )}
-      {error ? <p className="status-danger">{error}</p> : null}
+      {error ? <p className="status-danger" role="status">{error}</p> : null}
     </section>
   );
 }

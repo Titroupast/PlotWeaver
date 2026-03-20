@@ -75,6 +75,22 @@ p {
   letter-spacing: 0.02em;
 }
 
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: #111827;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  left: 12px;
+  top: 12px;
+}
+
 .container {
   width: min(1240px, 100%);
   margin: 0 auto;
@@ -205,6 +221,14 @@ button:disabled {
   background: #fff;
   border-color: #0f172a;
   color: #0f172a;
+}
+
+.desktop-nav {
+  display: flex;
+}
+
+.mobile-menu {
+  display: none;
 }
 
 .step-row {
@@ -365,6 +389,33 @@ pre {
   font-size: 1.9rem;
 }
 
+.risk-banner {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tab-button {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: #0f172a;
+  padding: 7px 12px;
+}
+
+.tab-button.active {
+  background: #e0f2fe;
+  border-color: #0ea5e9;
+}
+
 @media (max-width: 960px) {
   .grid.two {
     grid-template-columns: 1fr;
@@ -376,5 +427,13 @@ pre {
 
   .chapter-heading h3 {
     font-size: 1.5rem;
+  }
+
+  .desktop-nav {
+    display: none;
+  }
+
+  .mobile-menu {
+    display: block;
   }
 }
