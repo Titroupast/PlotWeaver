@@ -20,6 +20,9 @@ export default async function RunProcessPage({ params }: Props) {
 
   return (
     <div className="container stack">
+      <a className="skip-link" href="#run-main-content">
+        跳到正文
+      </a>
       <section className="card stack">
         <h1>生成过程</h1>
         <p className="muted">运行 ID: {runId}</p>
@@ -29,28 +32,28 @@ export default async function RunProcessPage({ params }: Props) {
             href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/planner`}
             prefetch={false}
           >
-            Planner 界面
+            Planner
           </Link>
           <Link
             className="button-link secondary"
             href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/writer`}
             prefetch={false}
           >
-            Writer 界面
+            Writer
           </Link>
           <Link
             className="button-link secondary"
             href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/reviewer`}
             prefetch={false}
           >
-            Reviewer 界面
+            Reviewer
           </Link>
           <Link
             className="button-link secondary"
             href={`/app/projects/${projectId}/chapters/${chapterId}/runs/${runId}/agents/memory-curator`}
             prefetch={false}
           >
-            Memory Curator 界面
+            Memory Curator
           </Link>
         </div>
         <div className="step-row">
@@ -71,14 +74,17 @@ export default async function RunProcessPage({ params }: Props) {
       </section>
 
       {latestContent ? (
-        <section className="card stack">
+        <section className="card stack" id="run-main-content">
           <div className="step-row">
             <h3>最新正文</h3>
             <span className="pill">v{latestContent.version_no}</span>
           </div>
-          <p className="muted">
-            {latestContent.storage_bucket} / {latestContent.storage_key}
-          </p>
+          <details>
+            <summary>查看存储路径</summary>
+            <p className="muted">
+              {latestContent.storage_bucket} / {latestContent.storage_key}
+            </p>
+          </details>
           <MarkdownContentEditor projectId={projectId} chapterId={chapterId} value={latestContent} />
         </section>
       ) : null}
